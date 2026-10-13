@@ -1,0 +1,49 @@
+name: Build Daily News Short
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 03:30 UTC = 09:00 India Standard Time
+    - cron: "30 3 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Install Python dependencies and browser
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Generate poster
+        run: python poster_generator.py
+
+      - name: Generate video
+        run: python make_video.py
+
+      - name: Upload generated files
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-news-short
+          path: |
+            output/daily_news_poster.png
+            output/daily_news_short.mp4
+          if-no-files-found: error
+          retention-days: 7
