@@ -16,6 +16,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 OUTPUT_FILE = DATA_DIR / "news_data.json"
+HISTORY_FILE = DATA_DIR / "news_history.json"
 
 NEWS_QUERIES = [
     "भारत की खबरें",
@@ -40,11 +41,24 @@ class HTMLTextParser(HTMLParser):
             self.parts.append(cleaned)
 
 
+
 def clean_text(value):
+    """Decode HTML entities and clean text without corrupting Hindi."""
     parser = HTMLTextParser()
     parser.feed(html.unescape(value or ""))
     text = " ".join(parser.parts)
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+
+    # Repair common UTF-8 text incorrectly decoded as Latin-1/Windows-1252.
+    if "à¤" in text or "à¥" in text:
+        try:
+            repaired = text.encode("latin-1").decode("utf-8")
+            if repaired:
+                text = repaired
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            pass
+
+    return text
 
 
 def parse_date(value):
@@ -138,45 +152,71 @@ def fetch_feed(query):
     )
 
 
+
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+    # Load previously used headlines.
+    seen = set()
+
+    if HISTORY_FILE.exists():
+        try:
+            history_data = json.loads(
+                HISTORY_FILE.read_text(encoding="utf-8")
+            )
+            seen = set(history_data.get("headlines", []))
+        except (json.JSONDecodeError, OSError):
+            print("Warning: Could not read news history.")
+
     collected = []
 
+    # Fetch news from every configured category.
     for query in NEWS_QUERIES:
         try:
             items = fetch_feed(query)
             collected.extend(items)
             print(f"Fetched {len(items)} items: {query}")
-
         except Exception as error:
             print(f"Could not fetch '{query}': {error}")
 
+    # Sort newest stories first.
     collected.sort(
         key=lambda item: item["_timestamp"],
         reverse=True,
     )
 
     selected = []
-    seen = set()
+    run_seen = set()
+    now = datetime.now(timezone.utc).timestamp()
+    max_age = 48 * 60 * 60
 
     for item in collected:
-        key = re.sub(r"\W+", "", item["headline"].lower())
+        headline = item["headline"].strip()
+        key = re.sub(r"\W+", "", headline.casefold())
 
-        if not key or key in seen:
+        if not key or key in seen or key in run_seen:
             continue
 
-        seen.add(key)
+        # Skip stories without a valid publication date.
+        if item["_timestamp"] <= 0:
+            continue
+
+        # Skip stories older than 48 hours.
+        age = now - item["_timestamp"]
+        if age < 0 or age > max_age:
+            continue
+
+        run_seen.add(key)
         selected.append(item)
 
         if len(selected) >= MAX_NEWS:
             break
 
+    # Do not replace existing news if there are not enough new stories.
     if len(selected) < MAX_NEWS:
         raise RuntimeError(
-            f"Only {len(selected)} unique news items were fetched. "
-            "The existing news_data.json was not replaced. "
-            "Retry later or configure an alternative news source."
+            f"Only {len(selected)} unseen news items were found. "
+            "Existing news files have not been replaced. Try again later."
         )
 
     news_data = {
@@ -194,6 +234,7 @@ def main():
             "published": item["published"],
         })
 
+    # Save the new news data.
     temp_file = OUTPUT_FILE.with_suffix(".tmp")
     temp_file.write_text(
         json.dumps(news_data, ensure_ascii=False, indent=2),
@@ -201,8 +242,22 @@ def main():
     )
     temp_file.replace(OUTPUT_FILE)
 
-    print("\nSUCCESS: Five news items saved.")
-    print(f"File: {OUTPUT_FILE}")
+    # Save history so these headlines are skipped in future runs.
+    all_seen = seen | run_seen
+    history_temp = HISTORY_FILE.with_suffix(".tmp")
+    history_temp.write_text(
+        json.dumps(
+            {"headlines": sorted(all_seen)},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    history_temp.replace(HISTORY_FILE)
+
+    print("\nSUCCESS: Five unseen news headlines saved.")
+    print(f"History contains {len(all_seen)} headlines.")
+    print(f"News file: {OUTPUT_FILE}")
 
     for index, item in enumerate(news_data["news"], start=1):
         print(f"{index}. {item['headline']}")
