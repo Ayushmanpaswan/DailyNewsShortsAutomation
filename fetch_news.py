@@ -1,4 +1,3 @@
-
 import html
 import json
 import re
@@ -13,21 +12,24 @@ from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from pathlib import Path
 
+
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 OUTPUT_FILE = DATA_DIR / "news_data.json"
 HISTORY_FILE = DATA_DIR / "news_history.json"
 
 NEWS_QUERIES = [
-    "भारत की खबरें",
-    "उत्तर प्रदेश लखनऊ",
-    "विश्व समाचार",
-    "टेक्नोलॉजी AI",
-    "खेल समाचार",
+    "भारत की ताजा खबरें",
+    "उत्तर प्रदेश लखनऊ समाचार",
+    "भारत विश्व समाचार",
+    "टेक्नोलॉजी AI समाचार",
+    "भारत खेल समाचार",
 ]
 
 MAX_NEWS = 5
 MAX_ATTEMPTS = 3
+MAX_AGE_HOURS = 48
+MAX_HISTORY = 1000
 
 
 class HTMLTextParser(HTMLParser):
@@ -41,7 +43,6 @@ class HTMLTextParser(HTMLParser):
             self.parts.append(cleaned)
 
 
-
 def clean_text(value):
     """Decode HTML entities and clean text without corrupting Hindi."""
     parser = HTMLTextParser()
@@ -49,7 +50,7 @@ def clean_text(value):
     text = " ".join(parser.parts)
     text = re.sub(r"\s+", " ", text).strip()
 
-    # Repair common UTF-8 text incorrectly decoded as Latin-1/Windows-1252.
+    # Repair common UTF-8 text incorrectly decoded as Latin-1.
     if "à¤" in text or "à¥" in text:
         try:
             repaired = text.encode("latin-1").decode("utf-8")
@@ -61,12 +62,20 @@ def clean_text(value):
     return text
 
 
+def normalize_headline(headline):
+    """Normalize headlines for basic duplicate detection."""
+    return re.sub(r"[^\w]+", "", headline.casefold())
+
+
 def parse_date(value):
     try:
         date = parsedate_to_datetime(value)
+
         if date.tzinfo is None:
             date = date.replace(tzinfo=timezone.utc)
+
         return date.timestamp()
+
     except (TypeError, ValueError, OverflowError):
         return 0
 
@@ -80,6 +89,7 @@ def fetch_feed(query):
     })
 
     url = "https://news.google.com/rss/search?" + params
+
     request = urllib.request.Request(
         url,
         headers={
@@ -114,8 +124,10 @@ def fetch_feed(query):
                 if not title:
                     continue
 
+                # Remove the publisher suffix from titles when present.
                 if " - " in title:
                     possible_title, publisher = title.rsplit(" - ", 1)
+
                     if possible_title.strip() and publisher.strip():
                         title = possible_title.strip()
 
@@ -137,6 +149,7 @@ def fetch_feed(query):
             OSError,
         ) as error:
             last_error = error
+
             print(
                 f"Attempt {attempt}/{MAX_ATTEMPTS} failed "
                 f"for '{query}': {error}"
@@ -152,30 +165,67 @@ def fetch_feed(query):
     )
 
 
+def load_history():
+    """Load previously used headlines from the history file."""
+    if not HISTORY_FILE.exists():
+        return []
+
+    try:
+        history_data = json.loads(
+            HISTORY_FILE.read_text(encoding="utf-8")
+        )
+
+        headlines = history_data.get("headlines", [])
+
+        if not isinstance(headlines, list):
+            print("Warning: Invalid history format. Starting empty.")
+            return []
+
+        return [
+            str(headline)
+            for headline in headlines
+            if isinstance(headline, str) and headline.strip()
+        ]
+
+    except (json.JSONDecodeError, OSError) as error:
+        print(f"Warning: Could not read news history: {error}")
+        raise RuntimeError(
+            "News history could not be read safely. "
+            "Fix the history file before continuing."
+        ) from error
+
+
+def save_json_atomically(path, data):
+    """Write JSON using a temporary file before replacing the target."""
+    temp_file = path.with_suffix(".tmp")
+
+    temp_file.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    temp_file.replace(path)
+
 
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Load previously used headlines.
-    seen = set()
+    history = load_history()
 
-    if HISTORY_FILE.exists():
-        try:
-            history_data = json.loads(
-                HISTORY_FILE.read_text(encoding="utf-8")
-            )
-            seen = set(history_data.get("headlines", []))
-        except (json.JSONDecodeError, OSError):
-            print("Warning: Could not read news history.")
+    seen = {
+        normalize_headline(headline)
+        for headline in history
+    }
 
     collected = []
 
-    # Fetch news from every configured category.
+    # Fetch news from all configured categories.
     for query in NEWS_QUERIES:
         try:
             items = fetch_feed(query)
             collected.extend(items)
             print(f"Fetched {len(items)} items: {query}")
+
         except Exception as error:
             print(f"Could not fetch '{query}': {error}")
 
@@ -187,22 +237,29 @@ def main():
 
     selected = []
     run_seen = set()
+
     now = datetime.now(timezone.utc).timestamp()
-    max_age = 48 * 60 * 60
+    max_age = MAX_AGE_HOURS * 60 * 60
 
     for item in collected:
         headline = item["headline"].strip()
-        key = re.sub(r"\W+", "", headline.casefold())
+        key = normalize_headline(headline)
+        timestamp = item["_timestamp"]
 
-        if not key or key in seen or key in run_seen:
+        if not key:
+            continue
+
+        # Skip previously used and duplicate headlines.
+        if key in seen or key in run_seen:
             continue
 
         # Skip stories without a valid publication date.
-        if item["_timestamp"] <= 0:
+        if timestamp <= 0:
             continue
 
-        # Skip stories older than 48 hours.
-        age = now - item["_timestamp"]
+        # Skip future-dated stories and stories older than 48 hours.
+        age = now - timestamp
+
         if age < 0 or age > max_age:
             continue
 
@@ -212,15 +269,17 @@ def main():
         if len(selected) >= MAX_NEWS:
             break
 
-    # Do not replace existing news if there are not enough new stories.
+    # Preserve existing news data if there are too few fresh stories.
     if len(selected) < MAX_NEWS:
         raise RuntimeError(
             f"Only {len(selected)} unseen news items were found. "
-            "Existing news files have not been replaced. Try again later."
+            f"Required: {MAX_NEWS}. "
+            "Existing news files have not been replaced. "
+            "Try again later."
         )
 
     news_data = {
-        "updated_at": datetime.now().astimezone().isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
         "news": [],
     }
 
@@ -234,33 +293,30 @@ def main():
             "published": item["published"],
         })
 
-    # Save the new news data.
-    temp_file = OUTPUT_FILE.with_suffix(".tmp")
-    temp_file.write_text(
-        json.dumps(news_data, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    temp_file.replace(OUTPUT_FILE)
+    # Save selected news.
+    save_json_atomically(OUTPUT_FILE, news_data)
 
-    # Save history so these headlines are skipped in future runs.
-    all_seen = seen | run_seen
-    history_temp = HISTORY_FILE.with_suffix(".tmp")
-    history_temp.write_text(
-        json.dumps(
-            {"headlines": sorted(all_seen)},
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    history_temp.replace(HISTORY_FILE)
+    # Update history and keep only the most recent 1,000 headlines.
+    updated_history = history + [
+        item["headline"] for item in selected
+    ]
+
+    updated_history = updated_history[-MAX_HISTORY:]
+
+    history_data = {
+        "headlines": updated_history
+    }
+
+    save_json_atomically(HISTORY_FILE, history_data)
 
     print("\nSUCCESS: Five unseen news headlines saved.")
-    print(f"History contains {len(all_seen)} headlines.")
+    print(f"History contains {len(updated_history)} headlines.")
     print(f"News file: {OUTPUT_FILE}")
 
     for index, item in enumerate(news_data["news"], start=1):
         print(f"{index}. {item['headline']}")
+        print(f"   Published: {item['published']}")
+        print(f"   Source: {item['source_url']}")
 
 
 if __name__ == "__main__":
