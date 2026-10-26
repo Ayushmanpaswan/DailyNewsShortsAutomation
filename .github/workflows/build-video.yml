@@ -1,10 +1,12 @@
-
-name: Build Daily News Short
+name: Build Daily News Shorts
 
 on:
   workflow_dispatch:
   schedule:
-    # Daily at 9:00 AM India time (03:30 UTC)
+    # Daily at 5:00 AM IST (23:30 UTC, previous day)
+    - cron: "30 23 * * *"
+
+    # Daily at 9:00 AM IST (03:30 UTC)
     - cron: "30 3 * * *"
 
 permissions:
@@ -13,7 +15,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Checkout repository
@@ -35,6 +37,17 @@ jobs:
           pip install -r requirements.txt
           python -m playwright install --with-deps chromium
 
+      - name: Prepare YouTube credentials
+        env:
+          YOUTUBE_CLIENT_SECRET_JSON: ${{ secrets.YOUTUBE_CLIENT_SECRET_JSON }}
+          YOUTUBE_TOKEN_JSON: ${{ secrets.YOUTUBE_TOKEN_JSON }}
+        run: |
+          test -n "$YOUTUBE_CLIENT_SECRET_JSON"
+          test -n "$YOUTUBE_TOKEN_JSON"
+
+          printf '%s' "$YOUTUBE_CLIENT_SECRET_JSON" > client_secret.json
+          printf '%s' "$YOUTUBE_TOKEN_JSON" > token.json
+
       - name: Fetch latest news
         run: python fetch_news.py
 
@@ -44,11 +57,16 @@ jobs:
       - name: Generate video
         run: python make_video.py
 
+      - name: Upload Short to YouTube
+        run: python youtube_upload.py --privacy public
+
       - name: Save news history to GitHub
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
           git add data/news_history.json
+
           if git diff --cached --quiet; then
             echo "News history has no changes to commit."
           else
