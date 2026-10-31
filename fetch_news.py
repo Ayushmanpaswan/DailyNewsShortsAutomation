@@ -106,54 +106,77 @@ def get_article_image(article_url):
 
 
 def get_commons_image(headline):
-    """Find a topic-related, freely licensed illustrative image on Wikimedia Commons."""
+    """Find a topic-matched, freely licensed illustrative image on Wikimedia Commons."""
     if not headline:
         return ""
-    # Keep search concise and omit common Hindi news filler words.
+
+    # Search with broad English topic terms as well as the Hindi headline.
+    text = headline.casefold()
+    topic_queries = []
+    rules = [
+        (("बारिश", "मौसम", "बाढ़", "तूफान", "rain", "weather", "flood"), ["India monsoon rain", "heavy rain India"]),
+        (("कैंसर", "मरीज", "स्वास्थ्य", "अस्पताल", "cancer", "health", "hospital"), ["medical hospital India", "healthcare doctor"]),
+        (("बैंक", "वित्त", "रुपया", "बाजार", "bank", "finance", "economy"), ["banking India", "Indian bank building"]),
+        (("यूपी", "उत्तर प्रदेश", "लखनऊ", "पुलिस", "गिरफ्तार", "योगी", "up news", "police"), ["Uttar Pradesh India", "Lucknow city India"]),
+        (("ias", "आईएएस", "transfer", "तबादला", "अधिकारी"), ["Indian civil service officer", "government office India"]),
+        (("क्रिकेट", "खेल", "मैच", "खिलाड़ी", "cricket", "sports"), ["India cricket match"]),
+        (("तकनीक", "टेक्नोलॉजी", "एआई", "technology", "artificial intelligence", "ai"), ["technology computer artificial intelligence"]),
+    ]
+    for keywords, queries in rules:
+        if any(keyword in text for keyword in keywords):
+            topic_queries.extend(queries)
+
     words = re.findall(r"[\w\u0900-\u097F]+", headline, flags=re.UNICODE)
     stop = {"आज", "की", "के", "का", "में", "से", "लिए", "और", "है", "हैं", "क्या", "बाद", "पर", "को", "एक", "यह"}
-    query = " ".join(word for word in words if word.casefold() not in stop)[:180]
-    if not query:
-        return ""
-    params = urllib.parse.urlencode({
-        "action": "query",
-        "generator": "search",
-        "gsrsearch": "filetype:bitmap " + query,
-        "gsrnamespace": "6",
-        "gsrlimit": "8",
-        "prop": "imageinfo",
-        "iiprop": "url|extmetadata",
-        "iiurlwidth": "900",
-        "format": "json",
-    })
-    request = urllib.request.Request(
-        "https://commons.wikimedia.org/w/api.php?" + params,
-        headers={"User-Agent": "DailyNewsShortsAutomation/1.0 (news poster image lookup)"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=15) as response:
-            payload = json.loads(response.read().decode("utf-8", errors="replace"))
-        pages = payload.get("query", {}).get("pages", {})
-        candidates = sorted(pages.values(), key=lambda page: int(page.get("index", 9999)))
-        for page in candidates:
-            info = (page.get("imageinfo") or [{}])[0]
-            url = info.get("thumburl") or info.get("url", "")
-            mime = info.get("mime", "")
-            title = page.get("title", "").casefold()
-            if not url.startswith("https://") or not mime.startswith("image/"):
-                continue
-            if any(word in title for word in ("logo", "icon", "flag", "map", "coat of arms")):
-                continue
-            metadata = info.get("extmetadata", {})
-            license_name = metadata.get("LicenseShortName", {}).get("value", "")
-            if not license_name:
-                continue
-            print(f"Wikimedia Commons illustrative image found: {page.get('title')} ({license_name})")
-            return url
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as error:
-        print(f"Wikimedia Commons image lookup failed: {error}")
-    return ""
+    concise = " ".join(word for word in words if word.casefold() not in stop)[:100]
+    if concise:
+        topic_queries.insert(0, concise)
+    if not topic_queries:
+        topic_queries = ["India news"]
 
+    headers = {
+        "User-Agent": "DailyNewsShortsAutomation/1.0 (https://github.com/Ayushmanpaswan/DailyNewsShortsAutomation; image search)"
+    }
+    for query in list(dict.fromkeys(topic_queries)):
+        params = urllib.parse.urlencode({
+            "action": "query",
+            "generator": "search",
+            "gsrsearch": query,
+            "gsrnamespace": "6",
+            "gsrlimit": "15",
+            "prop": "imageinfo",
+            "iiprop": "url|mime|extmetadata",
+            "iiurlwidth": "900",
+            "format": "json",
+        })
+        request = urllib.request.Request(
+            "https://commons.wikimedia.org/w/api.php?" + params,
+            headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                payload = json.loads(response.read().decode("utf-8", errors="replace"))
+            pages = payload.get("query", {}).get("pages", {})
+            candidates = sorted(pages.values(), key=lambda page: int(page.get("index", 9999)))
+            for page in candidates:
+                info = (page.get("imageinfo") or [{}])[0]
+                url = info.get("thumburl") or info.get("url", "")
+                mime = info.get("mime", "")
+                title = page.get("title", "").casefold()
+                if not url.startswith("https://") or not mime.startswith("image/"):
+                    continue
+                if any(word in title for word in ("logo", "icon", "flag", "map", "coat of arms", "poster", "banner")):
+                    continue
+                metadata = info.get("extmetadata", {})
+                license_name = metadata.get("LicenseShortName", {}).get("value", "")
+                if not license_name:
+                    continue
+                print(f"Illustrative image found for '{query}': {page.get('title')} ({license_name})")
+                return url
+            print(f"No licensed Commons images found for query: {query}")
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as error:
+            print(f"Wikimedia Commons lookup failed for '{query}': {error}")
+    return ""
 
 def clean_text(value):
     """Decode HTML entities and clean text without corrupting Hindi."""
