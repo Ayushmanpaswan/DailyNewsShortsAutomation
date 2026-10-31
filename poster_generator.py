@@ -45,11 +45,9 @@ def build_html(data):
         <article class="card">
           <div class="{image_wrap_class}">{image_block}<div class="image-shade"></div>
             <div class="num">{i:02}</div>
-            <span class="tag">{escape(str(item.get('figure', f'NEWS {i:02}')))}</span>
           </div>
           <div class="content">
             <h2>{escape(str(item['headline']))}</h2>
-            <p>{escape(str(item['detail']))}</p>
           </div>
         </article>""")
     return f"""<!doctype html>
@@ -99,7 +97,7 @@ body:before {{ content:""; position:absolute; width:650px; height:650px; right:-
   display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:950;box-shadow:0 5px 14px #0004;}}
 .tag {{position:absolute;left:15px;bottom:14px;background:#ffcf70;color:#3b1d11;padding:7px 10px;
   border-radius:8px;font-size:15px;font-weight:950;}}
-.content {{flex:1;min-width:0;padding:20px 22px 15px;display:flex;flex-direction:column;}}
+.content {{flex:1;min-width:0;padding:24px 24px;display:flex;flex-direction:column;justify-content:center;}}
 h2 {{font-size:28px;line-height:1.3;margin:0;font-weight:900;color:#111827;}}
 p {{font-size:20px;line-height:1.42;color:#475467;margin:13px 0 0;}}
 .source-label {{margin-top:auto;padding-top:8px;border-top:1px solid #e4e7ec;font-size:13px;
@@ -120,11 +118,6 @@ p {{font-size:20px;line-height:1.42;color:#475467;margin:13px 0 0;}}
     <div class="date">{escape(str(data["date"]))}</div>
   </header>
   <main class="cards">{''.join(cards)}</main>
-  <footer class="footer">
-    <strong>खबरों से रहें अपडेट</strong>
-    <div>देश • दुनिया • बड़ी खबरें • हर दिन</div>
-  </footer>
-  <div class="small">STAY INFORMED • VERIFY BEFORE SHARING</div>
 </body>
 </html>"""
 
