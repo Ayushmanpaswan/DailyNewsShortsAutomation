@@ -24,7 +24,6 @@ def load_data():
                 raise ValueError(f"News item {i} is missing '{key}'.")
     data.setdefault("date", datetime.now().strftime("%d %b %Y").upper())
     data.setdefault("subtitle", "आज की 5 बड़ी खबरें")
-    data.setdefault("source", "Sources listed in the news data")
     return data
 
 def build_html(data):
@@ -50,7 +49,6 @@ def build_html(data):
           <div class="content">
             <h2>{escape(str(item['headline']))}</h2>
             <p>{escape(str(item['detail']))}</p>
-            <div class="source-label">NEWS AND AWARENESS</div>
           </div>
         </article>""")
     return f"""<!doctype html>
@@ -123,7 +121,7 @@ p {{font-size:20px;line-height:1.42;color:#475467;margin:13px 0 0;}}
   <main class="cards">{''.join(cards)}</main>
   <footer class="footer">
     <strong>खबरों से रहें अपडेट</strong>
-    <div>Source: {escape(str(data["source"]))}</div>
+    <div>देश • दुनिया • बड़ी खबरें • हर दिन</div>
   </footer>
   <div class="small">STAY INFORMED • VERIFY BEFORE SHARING</div>
 </body>
@@ -135,7 +133,17 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width":1080, "height":1920}, device_scale_factor=1)
-        page.set_content(html, wait_until="networkidle")
+        page.set_content(html, wait_until="networkidle", timeout=60000)
+        page.evaluate("""async () => {
+            const images = Array.from(document.querySelectorAll("img.story-image"));
+            await Promise.all(images.map(async (img) => {
+                if (img.complete && img.naturalWidth > 0) return;
+                try { await Promise.race([img.decode(), new Promise(resolve => setTimeout(resolve, 8000))]); } catch (_) {}
+            }));
+        }""")
+        image_status = page.locator("img.story-image").evaluate_all("(imgs) => imgs.map(img => ({src: img.src, loaded: img.complete && img.naturalWidth > 0}))")
+        for index, status in enumerate(image_status, 1):
+            print("Poster image {}: {}".format(index, "LOADED" if status["loaded"] else "MISSING"))
         page.screenshot(path=str(OUTPUT_FILE), full_page=True)
         browser.close()
     print("Poster generated successfully.")
