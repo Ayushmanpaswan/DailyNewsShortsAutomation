@@ -167,6 +167,27 @@ def fetch_feed(query):
                 link = item.findtext("link", default="")
                 pub_date = item.findtext("pubDate", default="")
 
+                # RSS providers sometimes include a thumbnail in media/enclosure
+                # elements or an image inside the HTML description.
+                rss_image = ""
+                for child in item.iter():
+                    local_name = child.tag.rsplit("}", 1)[-1].lower()
+                    if local_name in ("content", "thumbnail", "enclosure"):
+                        candidate = child.attrib.get("url", "").strip()
+                        if candidate.startswith(("https://", "http://")):
+                            rss_image = candidate
+                            break
+                if not rss_image and description:
+                    img_match = re.search(
+                        r'<img\\b[^>]*?src=[\\"\\']([^\\"\\']+)[\\"\\']',
+                        description,
+                        flags=re.IGNORECASE,
+                    )
+                    if img_match:
+                        candidate = html.unescape(img_match.group(1)).strip()
+                        if candidate.startswith(("https://", "http://")):
+                            rss_image = candidate
+
                 title = clean_text(raw_title)
                 detail = clean_text(description)
 
@@ -184,6 +205,7 @@ def fetch_feed(query):
                     "headline": title,
                     "detail": detail or title,
                     "source_url": link,
+                    "rss_image": rss_image,
                     "published": pub_date,
                     "_timestamp": parse_date(pub_date),
                 })
@@ -334,7 +356,7 @@ def main():
 
     used_image_urls = set()
     for index, item in enumerate(selected, start=1):
-        image_url = get_article_image(item["source_url"])
+        image_url = item.get("rss_image", "") or get_article_image(item["source_url"])
         normalized_image_url = image_url.split("#", 1)[0].split("?", 1)[0].lower()
         if normalized_image_url in used_image_urls:
             print(f"Duplicate article image skipped for story {index}.")
@@ -375,6 +397,7 @@ def main():
         print(f"{index}. {item['headline']}")
         print(f"   Published: {item['published']}")
         print(f"   Source: {item['source_url']}")
+        print(f"   Image: {item.get('image') or 'NOT FOUND - fallback visual will be used'}")
 
 
 if __name__ == "__main__":
