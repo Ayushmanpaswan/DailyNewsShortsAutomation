@@ -80,13 +80,25 @@ def get_article_image(article_url):
             if "html" not in content_type.lower():
                 return ""
             html_data = response.read(1_500_000).decode("utf-8", errors="replace")
+        final_host = (urlparse(final_url).hostname or "").lower()
+        # Do not mistake Google News/Google branding for the story's photograph.
+        if final_host == "news.google.com" or final_host.endswith(".google.com"):
+            return ""
+
         parser = MetaImageParser()
         parser.feed(html_data)
         for candidate in parser.images:
             image_url = urljoin(final_url, html.unescape(candidate)).strip()
             parsed = urlparse(image_url)
-            if parsed.scheme in ("http", "https") and parsed.netloc:
-                return image_url
+            host = (parsed.hostname or "").lower()
+            path = parsed.path.lower()
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                continue
+            if host.endswith(("google.com", "gstatic.com", "googleusercontent.com")):
+                continue
+            if any(token in path for token in ("logo", "favicon", "icon", "placeholder", "default-image")):
+                continue
+            return image_url
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError) as error:
         print(f"Image unavailable for article: {error}")
     return ""
@@ -189,19 +201,18 @@ def fetch_feed(query):
                             rss_image = candidate
 
                 title = clean_text(raw_title)
-                # Google News descriptions often append the publisher name to the headline.
-                # Keep the poster copy publisher-free; the headline itself is the reliable text.
-                detail = title
-
                 if not title:
                     continue
 
-                # Remove the publisher suffix from titles when present.
+                # Google News titles commonly append the publisher after " - ".
+                # Strip that suffix before using the headline anywhere on the poster.
                 if " - " in title:
                     possible_title, publisher = title.rsplit(" - ", 1)
-
                     if possible_title.strip() and publisher.strip():
                         title = possible_title.strip()
+
+                # Never put publisher/source text in the poster detail.
+                detail = title
 
                 results.append({
                     "headline": title,
