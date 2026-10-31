@@ -138,6 +138,14 @@ def main():
         image_status = page.locator("img.story-image").evaluate_all("(imgs) => imgs.map(img => ({src: img.src, loaded: img.complete && img.naturalWidth > 0}))")
         for index, status in enumerate(image_status, 1):
             print("Poster image {}: {}".format(index, "LOADED" if status["loaded"] else "MISSING"))
+        loaded_count = sum(1 for status in image_status if status["loaded"])
+        if loaded_count < 3:
+            browser.close()
+            raise RuntimeError(
+                f"Only {loaded_count}/5 real news images loaded. "
+                "Poster was not saved so a text-only/Google-logo Short is not uploaded. "
+                "Check the RSS image URLs or publisher image access."
+            )
         page.screenshot(path=str(OUTPUT_FILE), full_page=True)
         browser.close()
     print("Poster generated successfully.")
