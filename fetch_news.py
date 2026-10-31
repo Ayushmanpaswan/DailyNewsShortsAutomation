@@ -104,6 +104,57 @@ def get_article_image(article_url):
     return ""
 
 
+
+def get_commons_image(headline):
+    """Find a topic-related, freely licensed illustrative image on Wikimedia Commons."""
+    if not headline:
+        return ""
+    # Keep search concise and omit common Hindi news filler words.
+    words = re.findall(r"[\w\u0900-\u097F]+", headline, flags=re.UNICODE)
+    stop = {"आज", "की", "के", "का", "में", "से", "लिए", "और", "है", "हैं", "क्या", "बाद", "पर", "को", "एक", "यह"}
+    query = " ".join(word for word in words if word.casefold() not in stop)[:180]
+    if not query:
+        return ""
+    params = urllib.parse.urlencode({
+        "action": "query",
+        "generator": "search",
+        "gsrsearch": "filetype:bitmap " + query,
+        "gsrnamespace": "6",
+        "gsrlimit": "8",
+        "prop": "imageinfo",
+        "iiprop": "url|extmetadata",
+        "iiurlwidth": "900",
+        "format": "json",
+    })
+    request = urllib.request.Request(
+        "https://commons.wikimedia.org/w/api.php?" + params,
+        headers={"User-Agent": "DailyNewsShortsAutomation/1.0 (news poster image lookup)"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            payload = json.loads(response.read().decode("utf-8", errors="replace"))
+        pages = payload.get("query", {}).get("pages", {})
+        candidates = sorted(pages.values(), key=lambda page: int(page.get("index", 9999)))
+        for page in candidates:
+            info = (page.get("imageinfo") or [{}])[0]
+            url = info.get("thumburl") or info.get("url", "")
+            mime = info.get("mime", "")
+            title = page.get("title", "").casefold()
+            if not url.startswith("https://") or not mime.startswith("image/"):
+                continue
+            if any(word in title for word in ("logo", "icon", "flag", "map", "coat of arms")):
+                continue
+            metadata = info.get("extmetadata", {})
+            license_name = metadata.get("LicenseShortName", {}).get("value", "")
+            if not license_name:
+                continue
+            print(f"Wikimedia Commons illustrative image found: {page.get('title')} ({license_name})")
+            return url
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"Wikimedia Commons image lookup failed: {error}")
+    return ""
+
+
 def clean_text(value):
     """Decode HTML entities and clean text without corrupting Hindi."""
     parser = HTMLTextParser()
@@ -370,6 +421,10 @@ def main():
     used_image_urls = set()
     for index, item in enumerate(selected, start=1):
         image_url = item.get("rss_image", "") or get_article_image(item["source_url"])
+        image_kind = "article"
+        if not image_url:
+            image_url = get_commons_image(item["headline"])
+            image_kind = "illustrative"
         normalized_image_url = image_url.split("#", 1)[0].split("?", 1)[0].lower()
         if normalized_image_url in used_image_urls:
             print(f"Duplicate article image skipped for story {index}.")
@@ -382,6 +437,7 @@ def main():
             "figure": f"NEWS {index:02d}",
             "detail": item["detail"],
             "image": image_url,
+            "image_kind": image_kind if image_url else "missing",
             "source_url": item["source_url"],
             "published": item["published"],
         })
