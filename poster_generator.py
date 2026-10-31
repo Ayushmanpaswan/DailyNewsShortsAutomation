@@ -34,10 +34,12 @@ def build_html(data):
         # Only use direct HTTP(S) image URLs; Playwright loads them in the poster.
         if not image_url.startswith(("https://", "http://")):
             image_url = ""
+        fallback_block = '<div class="image-fallback"><span>NEWS</span><strong>ताज़ा खबर</strong></div>'
         image_block = (
             f'<img class="story-image" src="{escape(image_url, quote=True)}" '
             f'alt="" onerror="this.style.display=\'none\';this.parentElement.classList.add(\'no-image\')">'
-            if image_url else '<div class="image-fallback"><span>NEWS</span><strong>ताज़ा खबर</strong></div>'
+            + fallback_block
+            if image_url else fallback_block
         )
         cards.append(f"""
         <article class="card">
@@ -89,7 +91,8 @@ body:before {{ content:""; position:absolute; width:650px; height:650px; right:-
 .story-image {{width:100%;height:100%;object-fit:cover;display:block;}}
 .image-shade {{position:absolute;inset:0;background:linear-gradient(0deg,rgba(3,10,20,.58),transparent 58%);pointer-events:none;}}
 .image-wrap.no-image .story-image {{display:none;}}
-.image-fallback {{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+.image-wrap.no-image .image-fallback {{display:flex;}}
+.image-fallback {{height:100%;display:none;flex-direction:column;align-items:center;justify-content:center;
   gap:12px;color:#fff;background:radial-gradient(circle at 25% 25%,#385d91,#0a172a 72%);}}
 .image-fallback span {{font-size:19px;letter-spacing:4px;font-weight:900;color:#ffcf70;}}
 .image-fallback strong {{font-size:29px;}}
