@@ -24,20 +24,31 @@ def load_data():
                 raise ValueError(f"News item {i} is missing '{key}'.")
     data.setdefault("date", datetime.now().strftime("%d %b %Y").upper())
     data.setdefault("subtitle", "आज की 5 बड़ी खबरें")
-    data.setdefault("source", "Sources listed in the news data")
     return data
 
 def build_html(data):
     cards = []
     for i, item in enumerate(data["news"], 1):
+        image_url = str(item.get("image", "") or "").strip()
+        # Only use direct HTTP(S) image URLs; Playwright loads them in the poster.
+        if not image_url.startswith(("https://", "http://")):
+            image_url = ""
+        fallback_block = '<div class="image-fallback"><span>NEWS</span><strong>ताज़ा खबर</strong></div>'
+        image_block = (
+            f'<img class="story-image" src="{escape(image_url, quote=True)}" '
+            f'alt="" onerror="this.style.display=\'none\';this.parentElement.classList.add(\'no-image\')">'
+            + fallback_block
+            if image_url else fallback_block
+        )
+        image_wrap_class = "image-wrap" if image_url else "image-wrap no-image"
         cards.append(f"""
         <article class="card">
-          <div class="num">{i:02}</div>
+          <div class="{image_wrap_class}">{image_block}<div class="image-shade"></div>
+            <div class="num">{i:02}</div>
+            <span class="tag">{escape(str(item.get('figure', f'NEWS {i:02}')))}</span>
+          </div>
           <div class="content">
-            <div class="row">
-              <h2>{escape(str(item['headline']))}</h2>
-              <span class="tag">{escape(str(item['figure']))}</span>
-            </div>
+            <h2>{escape(str(item['headline']))}</h2>
             <p>{escape(str(item['detail']))}</p>
           </div>
         </article>""")
@@ -47,69 +58,71 @@ def build_html(data):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
-@page {{ size: 1080px 1920px; margin: 0; }}
-* {{ box-sizing: border-box; }}
-html, body {{ margin:0; width:1080px; height:1920px; }}
+@page {{ size:1080px 1920px; margin:0; }}
+* {{ box-sizing:border-box; }}
+html,body {{ margin:0; width:1080px; height:1920px; }}
 body {{
-  font-family: "Nirmala UI", "Noto Sans Devanagari", "Mangal", sans-serif;
-  color:#101828;
-  background: linear-gradient(145deg,#061226 0%,#10284b 100%);
-  padding:42px 54px;
-}}
-.header {{
-  height:245px; border-radius:30px; padding:26px 34px;
-  color:white; background:linear-gradient(115deg,#e51d35,#b5122a);
+  font-family:"Nirmala UI","Noto Sans Devanagari","Mangal",sans-serif;
+  color:#f8fafc; background:#07111f; padding:38px 48px;
   position:relative; overflow:hidden;
 }}
-.brand {{font-size:28px; letter-spacing:4px; font-weight:800;}}
-.title {{font-size:62px; line-height:1.16; font-weight:900; margin-top:10px;}}
-.subtitle {{font-size:29px; margin-top:8px; font-weight:600;}}
-.date {{
- position:absolute; right:26px; top:25px; border-radius:14px;
- background:#fff; color:#101828; padding:13px 18px;
- font-size:22px; font-weight:800;
+body:before {{ content:""; position:absolute; width:650px; height:650px; right:-260px; top:280px;
+  border-radius:50%; background:radial-gradient(circle,rgba(29,78,216,.22),transparent 70%); }}
+.header {{
+  height:240px; padding:26px 30px; border-radius:28px; position:relative; overflow:hidden;
+  background:linear-gradient(120deg,#ef233c 0%,#b5172b 55%,#64152d 100%);
+  box-shadow:0 18px 38px rgba(0,0,0,.24);
 }}
-.cards {{ margin-top:25px; display:flex; flex-direction:column; gap:18px; }}
-.card {{
- height:260px; display:flex; gap:20px; padding:22px;
- border-radius:24px; background:#f8fafc;
- border:2px solid rgba(255,255,255,.55);
- box-shadow:0 10px 0 rgba(0,0,0,.16);
-}}
-.num {{
- flex:0 0 68px; height:68px; border-radius:20px; background:#e51d35;
- color:white; display:flex; align-items:center; justify-content:center;
- font-size:27px; font-weight:900;
-}}
-.content {{flex:1; min-width:0;}}
-.row {{display:flex; align-items:flex-start; gap:12px;}}
-h2 {{font-size:31px; line-height:1.25; margin:0; flex:1; font-weight:800;}}
-.tag {{
- flex:0 0 auto; background:#ffe08a; color:#78220e; padding:9px 12px;
- border-radius:12px; font-size:18px; font-weight:900; max-width:180px;
-}}
-p {{font-size:23px; line-height:1.45; color:#475467; margin:18px 0 0;}}
-.footer {{
- margin-top:24px; border-radius:20px; padding:18px 24px;
- background:#132b4d; color:#fff; height:105px;
-}}
-.footer strong {{font-size:24px; color:#ffd66b;}}
-.footer div {{font-size:19px; margin-top:7px;}}
-.small {{position:absolute; bottom:20px; left:0; width:100%; text-align:center;
- color:#b9c8dc; font-size:16px; letter-spacing:2px;}}
+.header:after {{ content:""; position:absolute; width:330px; height:330px; right:-95px; top:-155px;
+  border:36px solid rgba(255,255,255,.12); border-radius:50%; }}
+.brand {{font-size:25px;letter-spacing:3px;font-weight:900;}}
+.live {{display:inline-block;background:#fff;color:#b5172b;padding:6px 12px;border-radius:8px;
+  font-size:17px;letter-spacing:1px;margin-left:12px;vertical-align:4px;}}
+.title {{font-size:61px;line-height:1.12;font-weight:950;margin-top:15px;letter-spacing:-1px;}}
+.subtitle {{font-size:27px;margin-top:9px;font-weight:600;color:#ffe4e8;}}
+.date {{position:absolute;right:26px;bottom:24px;border:1px solid rgba(255,255,255,.45);
+  background:rgba(20,20,30,.18);padding:10px 14px;border-radius:12px;font-size:18px;font-weight:800;}}
+.cards {{margin-top:23px;display:flex;flex-direction:column;gap:16px;}}
+.card {{height:270px;display:flex;overflow:hidden;border-radius:22px;background:#f8fafc;color:#101828;
+  border:1px solid rgba(255,255,255,.14);box-shadow:0 12px 26px rgba(0,0,0,.22);}}
+.image-wrap {{width:310px;flex:0 0 310px;position:relative;background:linear-gradient(145deg,#173b68,#0a172a);
+  overflow:hidden;}}
+.story-image {{width:100%;height:100%;object-fit:cover;display:block;}}
+.image-shade {{position:absolute;inset:0;background:linear-gradient(0deg,rgba(3,10,20,.58),transparent 58%);pointer-events:none;}}
+.image-wrap.no-image .story-image {{display:none;}}
+.image-wrap.no-image .image-fallback {{display:flex;}}
+.image-fallback {{height:100%;display:none;flex-direction:column;align-items:center;justify-content:center;
+  gap:12px;color:#fff;background:radial-gradient(circle at 25% 25%,#385d91,#0a172a 72%);}}
+.image-fallback span {{font-size:19px;letter-spacing:4px;font-weight:900;color:#ffcf70;}}
+.image-fallback strong {{font-size:29px;}}
+.num {{position:absolute;left:15px;top:15px;width:51px;height:51px;border-radius:15px;background:#ef233c;color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:950;box-shadow:0 5px 14px #0004;}}
+.tag {{position:absolute;left:15px;bottom:14px;background:#ffcf70;color:#3b1d11;padding:7px 10px;
+  border-radius:8px;font-size:15px;font-weight:950;}}
+.content {{flex:1;min-width:0;padding:20px 22px 15px;display:flex;flex-direction:column;}}
+h2 {{font-size:28px;line-height:1.3;margin:0;font-weight:900;color:#111827;}}
+p {{font-size:20px;line-height:1.42;color:#475467;margin:13px 0 0;}}
+.source-label {{margin-top:auto;padding-top:8px;border-top:1px solid #e4e7ec;font-size:13px;
+  font-weight:900;letter-spacing:2px;color:#d61f36;}}
+.footer {{margin-top:22px;border:1px solid #29415e;border-radius:18px;padding:16px 22px;height:98px;
+  background:linear-gradient(100deg,#122944,#0d1b2e);}}
+.footer strong {{font-size:22px;color:#ffcf70;letter-spacing:1px;}}
+.footer div {{font-size:17px;margin-top:6px;color:#cbd5e1;}}
+.small {{position:absolute;bottom:13px;left:0;width:100%;text-align:center;color:#91a4bd;
+  font-size:14px;letter-spacing:2px;}}
 </style>
 </head>
 <body>
   <header class="header">
-    <div class="brand">DAILY UPDATE</div>
+    <div class="brand">NEWS AND AWARENESS <span class="live">DAILY BRIEF</span></div>
+    <div class="title">आज की 5 बड़ी खबरें</div>
+    <div class="subtitle">देश • दुनिया • उत्तर प्रदेश • टेक्नोलॉजी</div>
     <div class="date">{escape(str(data["date"]))}</div>
-    <div class="title">TOP 5 NEWS</div>
-    <div class="subtitle">{escape(str(data["subtitle"]))}</div>
   </header>
   <main class="cards">{''.join(cards)}</main>
   <footer class="footer">
-    <strong>NEWS UPDATE</strong>
-    <div>Source: {escape(str(data["source"]))}</div>
+    <strong>खबरों से रहें अपडेट</strong>
+    <div>देश • दुनिया • बड़ी खबरें • हर दिन</div>
   </footer>
   <div class="small">STAY INFORMED • VERIFY BEFORE SHARING</div>
 </body>
@@ -121,7 +134,17 @@ def main():
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width":1080, "height":1920}, device_scale_factor=1)
-        page.set_content(html, wait_until="networkidle")
+        page.set_content(html, wait_until="networkidle", timeout=60000)
+        page.evaluate("""async () => {
+            const images = Array.from(document.querySelectorAll("img.story-image"));
+            await Promise.all(images.map(async (img) => {
+                if (img.complete && img.naturalWidth > 0) return;
+                try { await Promise.race([img.decode(), new Promise(resolve => setTimeout(resolve, 8000))]); } catch (_) {}
+            }));
+        }""")
+        image_status = page.locator("img.story-image").evaluate_all("(imgs) => imgs.map(img => ({src: img.src, loaded: img.complete && img.naturalWidth > 0}))")
+        for index, status in enumerate(image_status, 1):
+            print("Poster image {}: {}".format(index, "LOADED" if status["loaded"] else "MISSING"))
         page.screenshot(path=str(OUTPUT_FILE), full_page=True)
         browser.close()
     print("Poster generated successfully.")
