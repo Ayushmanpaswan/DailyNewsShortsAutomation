@@ -1,4 +1,8 @@
+import base64
 import json
+import mimetypes
+import urllib.error
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 from html import escape
@@ -26,13 +30,43 @@ def load_data():
     data.setdefault("subtitle", "आज की 5 बड़ी खबरें")
     return data
 
+
+def image_as_data_uri(image_url):
+    """Download a remote image and embed it so Chromium doesn't depend on remote loading."""
+    if not image_url.startswith(("https://", "http://")):
+        return ""
+    request = urllib.request.Request(
+        image_url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        },
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=18) as response:
+            content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].lower()
+            raw = response.read(8 * 1024 * 1024 + 1)
+        if len(raw) > 8 * 1024 * 1024:
+            print(f"Image skipped (larger than 8 MB): {image_url}")
+            return ""
+        if not content_type.startswith("image/") or not raw:
+            print(f"Image URL did not return image bytes: {image_url} ({content_type})")
+            return ""
+        if content_type == "image/svg+xml":
+            # SVG files can contain active content; skip them for a simple poster.
+            print(f"SVG image skipped: {image_url}")
+            return ""
+        return "data:" + content_type + ";base64," + base64.b64encode(raw).decode("ascii")
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError) as error:
+        print(f"Could not download poster image: {image_url} ({error})")
+        return ""
+
 def build_html(data):
     cards = []
     for i, item in enumerate(data["news"], 1):
         image_url = str(item.get("image", "") or "").strip()
-        # Only use direct HTTP(S) image URLs; Playwright loads them in the poster.
-        if not image_url.startswith(("https://", "http://")):
-            image_url = ""
+        # Download and embed images locally; this avoids Chromium failing on remote hotlinks.
+        image_url = image_as_data_uri(image_url)
         fallback_block = '<div class="image-fallback"><span>NEWS</span><strong>ताज़ा खबर</strong></div>'
         image_block = (
             f'<img class="story-image" src="{escape(image_url, quote=True)}" '
