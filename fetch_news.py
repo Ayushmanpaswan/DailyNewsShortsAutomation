@@ -179,7 +179,7 @@ def fetch_feed(query):
                             break
                 if not rss_image and description:
                     img_match = re.search(
-                        r'<img\\b[^>]*?src=[\\"\\']([^\\"\\']+)[\\"\\']',
+                        r"""<img\b[^>]*?src=["']([^"']+)["']""",
                         description,
                         flags=re.IGNORECASE,
                     )
