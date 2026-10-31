@@ -1,6 +1,7 @@
 
 from pathlib import Path
 import argparse
+import json
 
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -12,16 +13,29 @@ BASE_DIR = Path(__file__).resolve().parent
 CLIENT_SECRET = BASE_DIR / "client_secret.json"
 TOKEN_FILE = BASE_DIR / "token.json"
 VIDEO_FILE = BASE_DIR / "output" / "daily_news_short.mp4"
+NEWS_FILE = BASE_DIR / "data" / "news_data.json"
 
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
-DEFAULT_TITLE = "आज की 5 बड़ी खबरें | Daily News #Shorts"
-
-DEFAULT_DESCRIPTION = """आज की पांच प्रमुख खबरें एक ही वीडियो में।
-
-खबरों की जानकारी को विश्वसनीय स्रोतों से सत्यापित करें।
-
-#HindiNews #DailyNews #Shorts #News"""
+def build_metadata():
+    """Create YouTube metadata from the actual stories in this video."""
+    try:
+        data = json.loads(NEWS_FILE.read_text(encoding="utf-8"))
+        stories = data.get("news", [])
+    except (OSError, json.JSONDecodeError):
+        stories = []
+    if not stories:
+        return ("आज की 5 बड़ी खबरें | Hindi News #Shorts", "आज की प्रमुख खबरें एक ही वीडियो में।\n\n#HindiNews #LatestNews #Shorts #IndiaNews")
+    headline = str(stories[0].get("headline", "आज की बड़ी खबर")).strip()
+    title = headline if len(headline) <= 82 else headline[:79].rsplit(" ", 1)[0] + "..."
+    title = title + " | #Shorts"
+    lines = ["आज की बड़ी खबरें — इस 6 सेकंड के न्यूज़ अपडेट में:", ""]
+    for story in stories:
+        story_title = str(story.get("headline", "")).strip()
+        if story_title:
+            lines.append("• " + story_title)
+    lines += ["", "ताज़ा अपडेट के लिए जुड़े रहें। जानकारी शेयर करने से पहले तथ्यों की पुष्टि करें.", "", "#HindiNews #LatestNews #BreakingNews #IndiaNews #UPNews #Shorts #NewsAndAwareness"]
+    return title[:100], "\n".join(lines)
 
 def get_credentials():
     creds = None
@@ -58,8 +72,8 @@ def main():
         description="Upload a news video to YouTube."
     )
 
-    parser.add_argument("--title", default=DEFAULT_TITLE)
-    parser.add_argument("--description", default=DEFAULT_DESCRIPTION)
+    parser.add_argument("--title", default=None)
+    parser.add_argument("--description", default=None)
     parser.add_argument(
         "--privacy",
         choices=["private", "unlisted", "public"],
@@ -67,6 +81,9 @@ def main():
     )
 
     args = parser.parse_args()
+    generated_title, generated_description = build_metadata()
+    title = args.title or generated_title
+    description = args.description or generated_description
 
     if not VIDEO_FILE.exists():
         raise FileNotFoundError(
@@ -82,8 +99,8 @@ def main():
 
     body = {
         "snippet": {
-            "title": args.title[:100],
-            "description": args.description,
+            "title": title[:100],
+            "description": description,
             "tags": ["news", "HindiNews", "Shorts"],
             "categoryId": "25"
         },
@@ -108,6 +125,7 @@ def main():
     video_id = result.get("id")
 
     print("Upload completed successfully!")
+    print("Title:", title[:100])
     print("Video ID:", video_id)
     print("Video URL:", f"https://www.youtube.com/watch?v={video_id}")
     print("Privacy:", args.privacy)
