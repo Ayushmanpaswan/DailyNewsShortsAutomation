@@ -40,9 +40,10 @@ def build_html(data):
             + fallback_block
             if image_url else fallback_block
         )
+        image_wrap_class = "image-wrap" if image_url else "image-wrap no-image"
         cards.append(f"""
         <article class="card">
-          <div class="image-wrap">{image_block}<div class="image-shade"></div>
+          <div class="{image_wrap_class}">{image_block}<div class="image-shade"></div>
             <div class="num">{i:02}</div>
             <span class="tag">{escape(str(item.get('figure', f'NEWS {i:02}')))}</span>
           </div>
