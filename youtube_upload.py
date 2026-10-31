@@ -18,23 +18,55 @@ NEWS_FILE = BASE_DIR / "data" / "news_data.json"
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
 def build_metadata():
-    """Create YouTube metadata from the actual stories in this video."""
+    """Build upload metadata from the five stories used in this video."""
     try:
         data = json.loads(NEWS_FILE.read_text(encoding="utf-8"))
         stories = data.get("news", [])
     except (OSError, json.JSONDecodeError):
         stories = []
-    if not stories:
-        return ("आज की 5 बड़ी खबरें | Hindi News #Shorts", "आज की प्रमुख खबरें एक ही वीडियो में।\n\n#HindiNews #LatestNews #Shorts #IndiaNews")
-    headline = str(stories[0].get("headline", "आज की बड़ी खबर")).strip()
-    title = headline if len(headline) <= 82 else headline[:79].rsplit(" ", 1)[0] + "..."
+
+    headlines = [
+        str(story.get("headline", "")).strip()
+        for story in stories
+        if str(story.get("headline", "")).strip()
+    ]
+    if not headlines:
+        return (
+            "आज की 5 बड़ी खबरें | Hindi News #Shorts",
+            "आज की प्रमुख खबरें एक ही वीडियो में।\n\n#HindiNews #LatestNews #Shorts",
+        )
+
+    first = headlines[0]
+    title = first if len(first) <= 78 else first[:75].rsplit(" ", 1)[0] + "..."
     title = title + " | #Shorts"
-    lines = ["आज की बड़ी खबरें — इस 6 सेकंड के न्यूज़ अपडेट में:", ""]
-    for story in stories:
-        story_title = str(story.get("headline", "")).strip()
-        if story_title:
-            lines.append("• " + story_title)
-    lines += ["", "ताज़ा अपडेट के लिए जुड़े रहें। जानकारी शेयर करने से पहले तथ्यों की पुष्टि करें.", "", "#HindiNews #LatestNews #BreakingNews #IndiaNews #UPNews #Shorts #NewsAndAwareness"]
+
+    # Choose topic hashtags only when the corresponding words occur in today's stories.
+    all_text = " ".join(headlines).casefold()
+    topic_rules = [
+        (("क्रिकेट", "टी20", "बैटर", "बल्लेबाज", "छक्के", "cricket"), "#CricketNews"),
+        (("लखनऊ", "उत्तर प्रदेश", "यूपी", "up news", "योगी"), "#UPNews"),
+        (("चुनाव", "सरकार", "मंत्री", "संसद", "राजनीति", "politics"), "#Politics"),
+        (("टेक्नोलॉजी", "एआई", "आर्टिफिशियल इंटेलिजेंस", "technology", "ai "), "#TechNews"),
+        (("मौसम", "बारिश", "बाढ़", "weather", "flood"), "#WeatherUpdate"),
+        (("खेल", "खिलाड़ी", "स्पोर्ट्स", "sports"), "#SportsNews"),
+        (("शेयर बाजार", "बाजार", "अर्थव्यवस्था", "business", "market"), "#BusinessNews"),
+        (("अदालत", "कोर्ट", "पुलिस", "मर्डर", "हादसा", "crime"), "#CrimeNews"),
+    ]
+    topic_tags = []
+    for keywords, tag in topic_rules:
+        if any(keyword in all_text for keyword in keywords) and tag not in topic_tags:
+            topic_tags.append(tag)
+    hashtags = ["#HindiNews", "#LatestNews"] + topic_tags + ["#Shorts", "#NewsAndAwareness"]
+    hashtags = list(dict.fromkeys(hashtags))[:10]
+
+    lines = ["आज की खबरें — इस शॉर्ट में:", ""]
+    lines.extend("• " + headline for headline in headlines)
+    lines += [
+        "",
+        "यह संक्षिप्त न्यूज़ अपडेट है। पूरी जानकारी के लिए मूल रिपोर्ट देखें और तथ्यों की पुष्टि करें.",
+        "",
+        " ".join(hashtags),
+    ]
     return title[:100], "\n".join(lines)
 
 def get_credentials():
@@ -101,7 +133,7 @@ def main():
         "snippet": {
             "title": title[:100],
             "description": description,
-            "tags": ["news", "HindiNews", "Shorts"],
+            "tags": [tag.lstrip("#") for tag in description.split() if tag.startswith("#")][:15] + ["Hindi News", "Shorts"],
             "categoryId": "25"
         },
         "status": {
