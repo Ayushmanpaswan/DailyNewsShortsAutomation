@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -41,6 +42,54 @@ class HTMLTextParser(HTMLParser):
         cleaned = data.strip()
         if cleaned:
             self.parts.append(cleaned)
+
+
+class MetaImageParser(HTMLParser):
+    """Read article preview images from Open Graph / Twitter metadata."""
+    def __init__(self):
+        super().__init__()
+        self.images = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag.lower() != "meta":
+            return
+        values = {str(k).lower(): str(v or "").strip() for k, v in attrs}
+        key = (values.get("property") or values.get("name") or "").lower()
+        content = values.get("content", "")
+        if key in ("og:image", "og:image:url", "twitter:image", "twitter:image:src") and content:
+            self.images.append(content)
+
+
+def get_article_image(article_url):
+    """Return the article's preview image when the publisher exposes one."""
+    if not article_url:
+        return ""
+    try:
+        request = urllib.request.Request(
+            article_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                              "AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,*/*",
+                "Accept-Language": "hi-IN,hi;q=0.9,en;q=0.8",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=12) as response:
+            final_url = response.geturl()
+            content_type = response.headers.get("Content-Type", "")
+            if "html" not in content_type.lower():
+                return ""
+            html_data = response.read(1_500_000).decode("utf-8", errors="replace")
+        parser = MetaImageParser()
+        parser.feed(html_data)
+        for candidate in parser.images:
+            image_url = urljoin(final_url, html.unescape(candidate)).strip()
+            parsed = urlparse(image_url)
+            if parsed.scheme in ("http", "https") and parsed.netloc:
+                return image_url
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError) as error:
+        print(f"Image unavailable for article: {error}")
+    return ""
 
 
 def clean_text(value):
@@ -283,12 +332,21 @@ def main():
         "news": [],
     }
 
+    used_image_urls = set()
     for index, item in enumerate(selected, start=1):
+        image_url = get_article_image(item["source_url"])
+        normalized_image_url = image_url.split("#", 1)[0].split("?", 1)[0].lower()
+        if normalized_image_url in used_image_urls:
+            print(f"Duplicate article image skipped for story {index}.")
+            image_url = ""
+        elif normalized_image_url:
+            used_image_urls.add(normalized_image_url)
+
         news_data["news"].append({
             "headline": item["headline"],
             "figure": f"NEWS {index:02d}",
             "detail": item["detail"],
-            "image": "",
+            "image": image_url,
             "source_url": item["source_url"],
             "published": item["published"],
         })
