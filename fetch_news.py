@@ -189,7 +189,9 @@ def fetch_feed(query):
                             rss_image = candidate
 
                 title = clean_text(raw_title)
-                detail = clean_text(description)
+                # Google News descriptions often append the publisher name to the headline.
+                # Keep the poster copy publisher-free; the headline itself is the reliable text.
+                detail = title
 
                 if not title:
                     continue
