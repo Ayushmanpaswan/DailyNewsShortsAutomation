@@ -95,13 +95,13 @@ def build_html(data):
 html,body {{ margin:0; width:1080px; height:1920px; }}
 body {{
   font-family:"Nirmala UI","Noto Sans Devanagari","Mangal",sans-serif;
-  color:#f8fafc; background:#07111f; padding:38px 48px;
+  color:#f8fafc; background:#07111f; padding:26px 32px;
   position:relative; overflow:hidden;
 }}
 body:before {{ content:""; position:absolute; width:650px; height:650px; right:-260px; top:280px;
   border-radius:50%; background:radial-gradient(circle,rgba(29,78,216,.22),transparent 70%); }}
 .header {{
-  height:240px; padding:26px 30px; border-radius:28px; position:relative; overflow:hidden;
+  height:250px; padding:25px 28px; border-radius:28px; position:relative; overflow:hidden;
   background:linear-gradient(120deg,#ef233c 0%,#b5172b 55%,#64152d 100%);
   box-shadow:0 18px 38px rgba(0,0,0,.24);
 }}
@@ -114,10 +114,10 @@ body:before {{ content:""; position:absolute; width:650px; height:650px; right:-
 .subtitle {{font-size:27px;margin-top:9px;font-weight:600;color:#ffe4e8;}}
 .date {{position:absolute;right:26px;bottom:24px;border:1px solid rgba(255,255,255,.45);
   background:rgba(20,20,30,.18);padding:10px 14px;border-radius:12px;font-size:18px;font-weight:800;}}
-.cards {{margin-top:23px;display:flex;flex-direction:column;gap:16px;}}
-.card {{height:270px;display:flex;overflow:hidden;border-radius:22px;background:#f8fafc;color:#101828;
+.cards {{margin-top:18px;display:flex;flex-direction:column;gap:14px;}}
+.card {{height:300px;display:flex;overflow:hidden;border-radius:22px;background:#f8fafc;color:#101828;
   border:1px solid rgba(255,255,255,.14);box-shadow:0 12px 26px rgba(0,0,0,.22);}}
-.image-wrap {{width:310px;flex:0 0 310px;position:relative;background:linear-gradient(145deg,#173b68,#0a172a);
+.image-wrap {{width:320px;flex:0 0 320px;position:relative;background:linear-gradient(145deg,#173b68,#0a172a);
   overflow:hidden;}}
 .story-image {{width:100%;height:100%;object-fit:cover;display:block;}}
 .image-shade {{position:absolute;inset:0;background:linear-gradient(0deg,rgba(3,10,20,.58),transparent 58%);pointer-events:none;}}
@@ -131,8 +131,8 @@ body:before {{ content:""; position:absolute; width:650px; height:650px; right:-
   display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:950;box-shadow:0 5px 14px #0004;}}
 .tag {{position:absolute;left:15px;bottom:14px;background:#ffcf70;color:#3b1d11;padding:7px 10px;
   border-radius:8px;font-size:15px;font-weight:950;}}
-.content {{flex:1;min-width:0;padding:24px 24px;display:flex;flex-direction:column;justify-content:center;}}
-h2 {{font-size:28px;line-height:1.3;margin:0;font-weight:900;color:#111827;}}
+.content {{flex:1;min-width:0;padding:22px 24px 22px 22px;display:flex;flex-direction:column;justify-content:center;}}
+h2 {{font-size:27px;line-height:1.28;margin:0;font-weight:900;color:#111827;}}
 p {{font-size:20px;line-height:1.42;color:#475467;margin:13px 0 0;}}
 .source-label {{margin-top:auto;padding-top:8px;border-top:1px solid #e4e7ec;font-size:13px;
   font-weight:900;letter-spacing:2px;color:#d61f36;}}
