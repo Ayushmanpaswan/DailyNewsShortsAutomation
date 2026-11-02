@@ -2,6 +2,8 @@ name: Build Daily News Shorts
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
   schedule:
     # Daily at 5:00 AM IST (23:30 UTC, previous day)
     - cron: "30 23 * * *"
