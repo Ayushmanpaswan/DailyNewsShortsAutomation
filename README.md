@@ -1,106 +1,96 @@
-# Daily News Shorts Automation (Starter)
+# Daily News Shorts Automation
 
-This project generates a 1080×1920 Hindi news poster, turns it into a 6-second MP4 with optional background music, and includes an optional YouTube upload helper.
+Generate a single vertical Hindi news video from individual 1080×1920 news posters. Each story is selected only when the image-discovery pipeline finds a candidate that passes the configured metadata relevance, license, duplicate, and image-quality checks. The metadata checks are not visual confirmation; review the generated posters and attribution report before publishing.
 
-## What works out of the box
-- `poster_generator.py`: renders the 5-news layout with HTML/CSS + Playwright/Chromium. This avoids Pillow's missing RAQM support.
-- `make_video.py`: creates a 6-second vertical MP4 with FFmpeg. If the music file is absent, it creates a silent video.
-- `youtube_upload.py`: optional upload using YouTube Data API v3 and Google OAuth.
+## Current workflow
 
-**Important:** `data/news_data.json` contains sample placeholders. This starter does not fetch real news automatically yet. Replace the five sample items with verified news, or connect a news provider before enabling daily publishing. YouTube uploads are private by default unless you explicitly choose another privacy setting.
+1. `fetch_news.py` reads the configured RSS feeds, filters recent/nonduplicate stories, discovers Wikimedia Commons candidates, validates license metadata and image quality, and writes a review report plus YouTube metadata.
+2. `poster_generator.py` creates one full-screen poster per accepted story.
+3. `make_video.py` combines the posters into one vertical MP4.
+4. Review `output/review_report.md`, every poster in `output/posters/`, the generated video, and all photo credits before any publication.
+
+If no stories have a suitable image, the pipeline stops safely instead of reusing unrelated or stale output.
+
+## Requirements
+
+- Python 3.12 (recommended)
+- FFmpeg installed and available on PATH
+- Chromium installed through Playwright
+- Internet access for RSS and Wikimedia Commons requests
 
 ## Windows setup (PowerShell)
-
-1. Extract the ZIP.
-2. Open the extracted `DailyNewsShortsAutomation` folder in VS Code.
-3. Install Python 3.11 or 3.12 (recommended for package compatibility) and make sure `python` works in Terminal.
-4. Create and activate a virtual environment:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
-pip install -r requirements.txt
+python -m playwright install chromium
 ```
 
-5. Generate the poster:
+Run the local pipeline:
 
 ```powershell
+python fetch_news.py
 python poster_generator.py
-```
-
-Output: `output/daily_news_poster.png`
-
-If Hindi font rendering is incorrect, install a Devanagari font such as Nirmala UI or Noto Sans Devanagari on Windows. The Chromium browser uses installed fonts and supports Hindi shaping.
-
-6. Create a video:
-   - Install FFmpeg and add its `bin` folder to PATH: https://ffmpeg.org/download.html
-   - Put music you have rights to use at `assets/background_music.mp3`.
-   - Then run:
-
-```powershell
 python make_video.py
 ```
 
-Output: `output/daily_news_short.mp4`
+Expected review outputs include:
 
-You can supply another audio path:
+- `output/posters/*.png` — individual vertical news posters
+- `output/daily_news_short.mp4` — combined video
+- `output/review_report.md` — story/image decisions and attribution details
+- `data/youtube_metadata.json` — generated title, description, tags, and image credits
 
-```powershell
-python make_video.py --music "C:\path\to\licensed-music.mp3" --duration 6
-```
+The project uses RSS headlines/summaries and Wikimedia Commons image metadata. A metadata match is not proof that the depicted scene is visually correct. Always inspect the actual image and source page.
 
-## YouTube upload setup (optional)
+## Image licensing and attribution
 
-1. In Google Cloud Console, create/select a project and enable **YouTube Data API v3**.
-2. Configure the OAuth consent screen, then create an **OAuth Client ID → Desktop app**.
-3. Download the OAuth JSON and place it at the project root named `client_secret.json`.
-4. To create or replace an expired/revoked YouTube OAuth token, run this once in a desktop terminal:
+The image adapter accepts only its explicitly configured reuse-license markers and rejects non-commercial/no-derivatives terms. It records the Commons file page, author/license attribution, and source details for review. A license label or metadata match should still be checked against the original file page before publication. CC BY-SA material may impose ShareAlike obligations; do not assume that a short credit line alone satisfies every obligation.
+
+Publisher RSS is used for story discovery. Do not copy publisher article photographs unless you have separate permission or a compatible license.
+
+## YouTube upload (manual and optional)
+
+The upload helper is separate from the build pipeline. It requires local OAuth files:
+
+- `client_secret.json`
+- `token.json`
+
+Keep both files private and never commit them. To authorize locally, place your Google Desktop OAuth client JSON at the project root and run:
 
 ```powershell
 python reauthorize_youtube.py
 ```
 
-5. Complete the browser consent and approve offline access. The script only performs OAuth authorization; it does not create or upload a video.
-6. Confirm that the local `token.json` was created. It contains the refresh token needed for unattended GitHub Actions runs. Keep both `client_secret.json` and `token.json` private. Never commit them to GitHub.
-7. Replace the GitHub Actions secret named `YOUTUBE_TOKEN_JSON` with the complete contents of the new local `token.json`.
-
-Using the GitHub CLI, run this from the project directory without printing the secret:
+After reviewing the video, report, image licenses, and generated credits, an upload can be initiated manually:
 
 ```powershell
-gh secret set YOUTUBE_TOKEN_JSON < token.json
+python youtube_upload.py --privacy private
 ```
 
-Alternatively, open the repository's **Settings → Secrets and variables → Actions**, select `YOUTUBE_TOKEN_JSON`, choose **Update secret**, and paste the complete contents of `token.json`.
-
-The existing workflow reads `YOUTUBE_CLIENT_SECRET_JSON` and `YOUTUBE_TOKEN_JSON` into temporary root-level files during the job and removes those files afterward. Do not paste either credential into source files or workflow logs.
-
-To perform an actual upload after authentication is repaired, use `youtube_upload.py` separately and review the privacy setting first.
-
-YouTube API projects may be subject to quota and audit restrictions; public upload behavior can depend on Google's current API project status. Do not assume public publishing is enabled until tested.
+Choose a different privacy setting only after explicitly reviewing it. The uploader validates that generated metadata contains image credits, but it does not replace human review. No upload is performed by the current GitHub Actions workflow.
 
 ## GitHub Actions
 
-The workflow in `.github/workflows/build-video.yml` builds the poster and video on a schedule and uploads them as a downloadable workflow artifact. It does **not** upload to YouTube automatically yet. That is intentional: first verify the output and add news-source automation and securely configured OAuth secrets.
+`.github/workflows/build-video.yml` is currently **manual-dispatch only**. It has no schedule or push trigger, does not load YouTube credentials, does not upload to YouTube, and uploads generated files only as a short-lived review artifact.
 
-To enable the scheduled build:
-1. Push this project to a GitHub repository.
-2. In the repository, go to **Actions** and enable workflows.
-3. The workflow runs daily at 03:30 UTC (09:00 India Standard Time) and can also be started manually.
-4. Add a music file only if you have the rights to use it; GitHub workflow can use a committed, properly licensed audio file or a securely stored asset.
+To run it manually, open the repository's **Actions** tab, select **Build Daily News Shorts (manual review)**, and choose **Run workflow**. This starts RSS/Commons discovery and generates review artifacts; it does not publish a video.
 
-GitHub-hosted runners are temporary, so generated files are attached as workflow artifacts.
+## Tests
 
-## Suggested next stages
-1. Replace sample headlines with real, verified news.
-2. Add a trusted news API/RSS source and robust error handling.
-3. Run the scheduled build and inspect artifacts.
-4. Configure and test YouTube upload privately.
-5. Only then automate public uploads.
+Run the mocked/unit test suite locally:
 
-## Safety and reliability notes
-- News should be checked for accuracy and dated.
-- Use music you own or have a license to use.
-- Do not put OAuth credentials in source control.
-- A six-second video is very short for five stories; use concise headlines and consider a longer duration if readability suffers.
+```powershell
+python -m unittest discover -s tests -v
+```
+
+Tests do not establish that a live news image is visually accurate. Inspect each real output before publication.
+
+## Safety
+
+- Never commit OAuth credentials, tokens, virtual environments, caches, generated videos, or private assets.
+- Do not weaken relevance, licensing, or image-quality checks to increase the number of selected stories.
+- If a story has no suitable licensed image, skip it.
+- Review all outputs and attribution before any manual YouTube upload.
