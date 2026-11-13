@@ -192,6 +192,7 @@ ENGLISH_ENTITY_ALIASES = {
     "irgc": "Islamic Revolutionary Guard Corps", "georgia": "Georgia",
     "nitish kumar": "Nitish Kumar",
     "national democratic alliance": "National Democratic Alliance",
+    "nda": "National Democratic Alliance",
     "janata dal (united)": "Janata Dal (United)",
     "samajwadi party": "Samajwadi Party",
     "chhath puja": "Chhath Puja", "chhath": "Chhath Puja",
