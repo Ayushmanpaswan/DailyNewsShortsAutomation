@@ -75,5 +75,6 @@ jobs:
             output/daily_news_short.mp4
             output/review_report.md
             data/youtube_metadata.json
+            data/image_rejection_log.json
           if-no-files-found: warn
           retention-days: 7
