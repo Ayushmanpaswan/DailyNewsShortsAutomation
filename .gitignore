@@ -1,0 +1,13 @@
+
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+.env
+client_secret.json
+token.json
+assets/*.mp3
+assets/*.wav
+output/*
+!output/.gitkeep
+data/news_data_backup.json
