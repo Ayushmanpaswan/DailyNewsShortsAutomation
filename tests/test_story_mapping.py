@@ -90,6 +90,34 @@ class StoryMappingTests(unittest.TestCase):
             self.assertIsNotNone(_relevance(item, page, metadata), item["headline"])
 
 
+    def test_chhath_festival_stories_map_to_specific_entity_and_ritual(self):
+        cases = [
+            {"headline": "छठ पूजा 2026: 13 नवंबर को संध्या अर्घ्य", "detail": "छठ महापर्व के अवसर पर व्रती सूर्य को अर्घ्य देंगे।"},
+            {"headline": "Chhath 2026 Live Chhath Songs", "detail": "छठ पूजा के पारंपरिक गीत और भजन।"},
+        ]
+        for item in cases:
+            mapping = story_mapping(item)
+            self.assertEqual(mapping["status"], "ready", item["headline"])
+            self.assertIn("Chhath Puja", mapping["entity_terms"])
+            self.assertTrue(mapping["context_terms"])
+
+    def test_hindi_political_and_government_names_are_explicit(self):
+        item = {
+            "headline": "बिहार में परियोजना का उद्घाटन, नीतीश कुमार और NDA शामिल",
+            "detail": "मुख्यमंत्री नीतीश कुमार ने कार्यक्रम में भाग लिया।"
+        }
+        mapping = story_mapping(item)
+        self.assertEqual(mapping["status"], "ready")
+        self.assertIn("Nitish Kumar", mapping["entity_terms"])
+        self.assertIn("National Democratic Alliance", mapping["entity_terms"])
+        self.assertIn("inauguration", mapping["context_terms"])
+
+    def test_added_aliases_do_not_make_generic_festival_or_place_a_story_entity(self):
+        item = {"headline": "दिल्ली में भारी बारिश", "detail": "कई इलाकों में जलभराव हुआ।"}
+        mapping = story_mapping(item)
+        self.assertEqual(mapping["status"], "rejected")
+
+
 
 if __name__ == "__main__":
     unittest.main()
