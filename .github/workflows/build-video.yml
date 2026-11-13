@@ -35,6 +35,49 @@ jobs:
           python -m playwright install --with-deps chromium
         timeout-minutes: 10
 
+      - name: Validate and refresh YouTube OAuth before building
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          from google.auth.transport.requests import Request
+          from google.oauth2.credentials import Credentials
+
+          token_json = os.environ.get("YOUTUBE_TOKEN_JSON", "")
+          if not token_json.strip():
+              raise SystemExit("Missing GitHub Actions secret YOUTUBE_TOKEN_JSON.")
+
+          token_path = Path("token.json")
+          try:
+              token_data = json.loads(token_json)
+          except json.JSONDecodeError as exc:
+              raise SystemExit("YOUTUBE_TOKEN_JSON is not valid JSON. Re-authorize YouTube and replace the secret.") from exc
+
+          if not token_data.get("refresh_token"):
+              raise SystemExit("YOUTUBE_TOKEN_JSON has no refresh_token. Re-authorize YouTube locally and replace the secret.")
+
+          token_path.write_text(token_json, encoding="utf-8")
+          credentials = Credentials.from_authorized_user_file(
+              str(token_path),
+              ["https://www.googleapis.com/auth/youtube.upload"],
+          )
+          try:
+              credentials.refresh(Request())
+          except Exception as exc:
+              raise SystemExit(
+                  "YouTube OAuth preflight failed before news/video generation. "
+                  "The refresh token may be expired, revoked, or mismatched with the OAuth client. "
+                  "Run python reauthorize_youtube.py locally, then update YOUTUBE_TOKEN_JSON. "
+                  f"Google error type: {type(exc).__name__}"
+              ) from exc
+
+          if not credentials.valid:
+              raise SystemExit("YouTube OAuth preflight did not produce valid credentials.")
+
+          token_path.write_text(credentials.to_json(), encoding="utf-8")
+          print("YouTube OAuth preflight passed; refreshed token saved for this run.")
+
       - name: Fetch latest news and validate images
         run: python fetch_news.py
 
@@ -43,24 +86,6 @@ jobs:
 
       - name: Generate combined video
         run: python make_video.py
-
-      - name: Require OAuth secret
-        shell: bash
-        run: |
-          if [ -z "$YOUTUBE_TOKEN_JSON" ]; then
-            echo "::error::Missing GitHub Actions secret YOUTUBE_TOKEN_JSON. Add a valid Google OAuth token.json JSON containing a refresh_token."
-            exit 1
-          fi
-
-      - name: Write OAuth token securely
-        shell: python
-        run: |
-          import os
-          from pathlib import Path
-          token = os.environ["YOUTUBE_TOKEN_JSON"]
-          if not token.strip():
-              raise SystemExit("YOUTUBE_TOKEN_JSON is empty.")
-          Path("token.json").write_text(token, encoding="utf-8")
 
       - name: Upload one combined video publicly
         run: python youtube_upload.py --privacy public
