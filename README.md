@@ -56,14 +56,27 @@ python make_video.py --music "C:\path\to\licensed-music.mp3" --duration 6
 1. In Google Cloud Console, create/select a project and enable **YouTube Data API v3**.
 2. Configure the OAuth consent screen, then create an **OAuth Client ID → Desktop app**.
 3. Download the OAuth JSON and place it at the project root named `client_secret.json`.
-4. Run this once in a desktop terminal:
+4. To create or replace an expired/revoked YouTube OAuth token, run this once in a desktop terminal:
 
 ```powershell
-python youtube_upload.py --privacy private
+python reauthorize_youtube.py
 ```
 
-5. Complete the browser consent. A `token.json` file will be created locally. Keep both `client_secret.json` and `token.json` private. Never commit them to GitHub.
-6. Review the uploaded private video in YouTube Studio. Only use `--privacy public` after validating the content and upload behavior.
+5. Complete the browser consent and approve offline access. The script only performs OAuth authorization; it does not create or upload a video.
+6. Confirm that the local `token.json` was created. It contains the refresh token needed for unattended GitHub Actions runs. Keep both `client_secret.json` and `token.json` private. Never commit them to GitHub.
+7. Replace the GitHub Actions secret named `YOUTUBE_TOKEN_JSON` with the complete contents of the new local `token.json`.
+
+Using the GitHub CLI, run this from the project directory without printing the secret:
+
+```powershell
+gh secret set YOUTUBE_TOKEN_JSON < token.json
+```
+
+Alternatively, open the repository's **Settings → Secrets and variables → Actions**, select `YOUTUBE_TOKEN_JSON`, choose **Update secret**, and paste the complete contents of `token.json`.
+
+The existing workflow reads `YOUTUBE_CLIENT_SECRET_JSON` and `YOUTUBE_TOKEN_JSON` into temporary root-level files during the job and removes those files afterward. Do not paste either credential into source files or workflow logs.
+
+To perform an actual upload after authentication is repaired, use `youtube_upload.py` separately and review the privacy setting first.
 
 YouTube API projects may be subject to quota and audit restrictions; public upload behavior can depend on Google's current API project status. Do not assume public publishing is enabled until tested.
 

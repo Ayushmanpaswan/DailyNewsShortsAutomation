@@ -1,186 +1,167 @@
 import base64
 import json
-import mimetypes
-import urllib.error
-import urllib.request
+import shutil
 from datetime import datetime
-from pathlib import Path
 from html import escape
+from pathlib import Path
+
+from PIL import Image
 from playwright.sync_api import sync_playwright
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_FILE = BASE_DIR / "data" / "news_data.json"
 OUTPUT_DIR = BASE_DIR / "output"
-OUTPUT_DIR.mkdir(exist_ok=True)
-OUTPUT_FILE = OUTPUT_DIR / "daily_news_poster.png"
+POSTER_DIR = OUTPUT_DIR / "posters"
+VIDEO_FILE = OUTPUT_DIR / "daily_news_short.mp4"
+REVIEW_FILE = OUTPUT_DIR / "review_report.md"
+WIDTH = 1080
+HEIGHT = 1920
+MIN_IMAGE_WIDTH = 320
+MIN_IMAGE_HEIGHT = 240
+MIN_IMAGE_AREA = 120_000
+
+
+def compact_text(value, limit):
+    text = " ".join(str(value).split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
 
 def load_data():
     if not DATA_FILE.exists():
         raise FileNotFoundError(f"News data file not found: {DATA_FILE}")
-    with DATA_FILE.open("r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = json.loads(DATA_FILE.read_text(encoding="utf-8"))
     news = data.get("news", [])
-    if len(news) != 5:
-        raise ValueError("data/news_data.json must contain exactly 5 items in 'news'.")
-    for i, item in enumerate(news, 1):
-        for key in ("headline", "figure", "detail"):
+    if not 1 <= len(news) <= 5:
+        raise ValueError("news_data.json must contain between 1 and 5 stories.")
+
+    for index, item in enumerate(news, start=1):
+        for key in ("headline", "detail", "image", "image_page_url", "image_author", "image_license", "image_attribution", "image_relevance_evidence"):
             if not str(item.get(key, "")).strip():
-                raise ValueError(f"News item {i} is missing '{key}'.")
-    data.setdefault("date", datetime.now().strftime("%d %b %Y").upper())
-    data.setdefault("subtitle", "आज की 5 बड़ी खबरें")
+                raise ValueError(f"News item {index} is missing '{key}'.")
+        image_path = (BASE_DIR / item["image"]).resolve()
+        if BASE_DIR not in image_path.parents or not image_path.is_file():
+            raise ValueError(f"News item {index} image not found: {image_path}")
+        try:
+            with Image.open(image_path) as image:
+                image.verify()
+            with Image.open(image_path) as image:
+                image.load()
+                width, height = image.size
+                if (width < MIN_IMAGE_WIDTH or height < MIN_IMAGE_HEIGHT
+                        or width * height < MIN_IMAGE_AREA):
+                    raise ValueError(f"image is too small: {width}x{height}")
+        except (OSError, ValueError) as error:
+            raise ValueError(
+                f"News item {index} image is not a valid photograph: {image_path}"
+            ) from error
+        item["image_path"] = image_path
+
+    data["date"] = data.get("updated_at", datetime.now().isoformat())[:10]
     return data
 
 
-def image_as_data_uri(image_url):
-    """Download a remote image and embed it so Chromium doesn't depend on remote loading."""
-    if not image_url.startswith(("https://", "http://")):
-        return ""
-    request = urllib.request.Request(
-        image_url,
-        headers={
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
-            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-        },
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=18) as response:
-            content_type = (response.headers.get("Content-Type") or "").split(";", 1)[0].lower()
-            raw = response.read(8 * 1024 * 1024 + 1)
-        if len(raw) > 8 * 1024 * 1024:
-            print(f"Image skipped (larger than 8 MB): {image_url}")
-            return ""
-        if not content_type.startswith("image/") or not raw:
-            print(f"Image URL did not return image bytes: {image_url} ({content_type})")
-            return ""
-        if content_type == "image/svg+xml":
-            # SVG files can contain active content; skip them for a simple poster.
-            print(f"SVG image skipped: {image_url}")
-            return ""
-        return "data:" + content_type + ";base64," + base64.b64encode(raw).decode("ascii")
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError) as error:
-        print(f"Could not download poster image: {image_url} ({error})")
-        return ""
+def image_data_uri(image_path):
+    return "data:image/jpeg;base64," + base64.b64encode(
+        image_path.read_bytes()
+    ).decode("ascii")
 
-def build_html(data):
-    cards = []
-    for i, item in enumerate(data["news"], 1):
-        image_url = str(item.get("image", "") or "").strip()
-        # Download and embed images locally; this avoids Chromium failing on remote hotlinks.
-        image_url = image_as_data_uri(image_url)
-        fallback_block = '<div class="image-fallback"><span>NEWS</span><strong>ताज़ा खबर</strong></div>'
-        image_block = (
-            f'<img class="story-image" src="{escape(image_url, quote=True)}" '
-            f'alt="" onerror="this.style.display=\'none\';this.parentElement.classList.add(\'no-image\')">'
-            + fallback_block
-            if image_url else fallback_block
-        )
-        image_wrap_class = "image-wrap" if image_url else "image-wrap no-image"
-        cards.append(f"""
-        <article class="card">
-          <div class="{image_wrap_class}">{image_block}<div class="image-shade"></div>
-            <div class="num">{i:02}</div>
-          </div>
-          <div class="content">
-            <h2>{escape(str(item['headline']))}</h2>
-          </div>
-        </article>""")
+
+def build_html(item, index, total, date):
+    headline = compact_text(item["headline"], 130)
+    detail = compact_text(item["detail"], 300)
+    category = item.get("category", "भारत")
+    image_uri = image_data_uri(item["image_path"])
     return f"""<!doctype html>
-<html lang="hi">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<style>
-@page {{ size:1080px 1920px; margin:0; }}
-* {{ box-sizing:border-box; }}
-html,body {{ margin:0; width:1080px; height:1920px; }}
-body {{
-  font-family:"Nirmala UI","Noto Sans Devanagari","Mangal",sans-serif;
-  color:#f8fafc; background:#07111f; padding:26px 32px;
-  position:relative; overflow:hidden;
-}}
-body:before {{ content:""; position:absolute; width:650px; height:650px; right:-260px; top:280px;
-  border-radius:50%; background:radial-gradient(circle,rgba(29,78,216,.22),transparent 70%); }}
-.header {{
-  height:250px; padding:25px 28px; border-radius:28px; position:relative; overflow:hidden;
-  background:linear-gradient(120deg,#ef233c 0%,#b5172b 55%,#64152d 100%);
-  box-shadow:0 18px 38px rgba(0,0,0,.24);
-}}
-.header:after {{ content:""; position:absolute; width:330px; height:330px; right:-95px; top:-155px;
-  border:36px solid rgba(255,255,255,.12); border-radius:50%; }}
-.brand {{font-size:25px;letter-spacing:3px;font-weight:900;}}
-.live {{display:inline-block;background:#fff;color:#b5172b;padding:6px 12px;border-radius:8px;
-  font-size:17px;letter-spacing:1px;margin-left:12px;vertical-align:4px;}}
-.title {{font-size:61px;line-height:1.12;font-weight:950;margin-top:15px;letter-spacing:-1px;}}
-.subtitle {{font-size:27px;margin-top:9px;font-weight:600;color:#ffe4e8;}}
-.date {{position:absolute;right:26px;bottom:24px;border:1px solid rgba(255,255,255,.45);
-  background:rgba(20,20,30,.18);padding:10px 14px;border-radius:12px;font-size:18px;font-weight:800;}}
-.cards {{margin-top:18px;display:flex;flex-direction:column;gap:14px;}}
-.card {{height:300px;display:flex;overflow:hidden;border-radius:22px;background:#f8fafc;color:#101828;
-  border:1px solid rgba(255,255,255,.14);box-shadow:0 12px 26px rgba(0,0,0,.22);}}
-.image-wrap {{width:320px;flex:0 0 320px;position:relative;background:linear-gradient(145deg,#173b68,#0a172a);
-  overflow:hidden;}}
-.story-image {{width:100%;height:100%;object-fit:cover;display:block;}}
-.image-shade {{position:absolute;inset:0;background:linear-gradient(0deg,rgba(3,10,20,.58),transparent 58%);pointer-events:none;}}
-.image-wrap.no-image .story-image {{display:none;}}
-.image-wrap.no-image .image-fallback {{display:flex;}}
-.image-fallback {{height:100%;display:none;flex-direction:column;align-items:center;justify-content:center;
-  gap:12px;color:#fff;background:radial-gradient(circle at 25% 25%,#385d91,#0a172a 72%);}}
-.image-fallback span {{font-size:19px;letter-spacing:4px;font-weight:900;color:#ffcf70;}}
-.image-fallback strong {{font-size:29px;}}
-.num {{position:absolute;left:15px;top:15px;width:51px;height:51px;border-radius:15px;background:#ef233c;color:#fff;
-  display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:950;box-shadow:0 5px 14px #0004;}}
-.tag {{position:absolute;left:15px;bottom:14px;background:#ffcf70;color:#3b1d11;padding:7px 10px;
-  border-radius:8px;font-size:15px;font-weight:950;}}
-.content {{flex:1;min-width:0;padding:22px 24px 22px 22px;display:flex;flex-direction:column;justify-content:center;}}
-h2 {{font-size:27px;line-height:1.28;margin:0;font-weight:900;color:#111827;}}
-p {{font-size:20px;line-height:1.42;color:#475467;margin:13px 0 0;}}
-.source-label {{margin-top:auto;padding-top:8px;border-top:1px solid #e4e7ec;font-size:13px;
-  font-weight:900;letter-spacing:2px;color:#d61f36;}}
-.footer {{margin-top:22px;border:1px solid #29415e;border-radius:18px;padding:16px 22px;height:98px;
-  background:linear-gradient(100deg,#122944,#0d1b2e);}}
-.footer strong {{font-size:22px;color:#ffcf70;letter-spacing:1px;}}
-.footer div {{font-size:17px;margin-top:6px;color:#cbd5e1;}}
-.small {{position:absolute;bottom:13px;left:0;width:100%;text-align:center;color:#91a4bd;
-  font-size:14px;letter-spacing:2px;}}
-</style>
-</head>
-<body>
-  <header class="header">
-    <div class="brand">NEWS AND AWARENESS <span class="live">DAILY BRIEF</span></div>
-    <div class="title">आज की 5 बड़ी खबरें</div>
-    <div class="subtitle">देश • दुनिया • उत्तर प्रदेश • टेक्नोलॉजी</div>
-    <div class="date">{escape(str(data["date"]))}</div>
-  </header>
-  <main class="cards">{''.join(cards)}</main>
-</body>
-</html>"""
+<html lang="hi"><head><meta charset="utf-8"><style>
+@page {{ size: 1080px 1920px; margin: 0; }}
+* {{ box-sizing: border-box; }} html,body {{ margin:0;width:1080px;height:1920px; }}
+body {{ font-family:"Nirmala UI","Noto Sans Devanagari","Mangal",sans-serif;
+  color:#fff;background:#16060a;position:relative;overflow:hidden; }}
+.top {{ height:184px;padding:40px 56px 24px;background:#c9162b;
+  border-bottom:12px solid #ffd33d;position:relative; }}
+.brand {{ font-size:28px;letter-spacing:5px;font-weight:900; }}
+.edition {{ position:absolute;right:56px;top:44px;font-size:23px;font-weight:800;
+  background:#ffd33d;color:#351015;padding:11px 18px;border-radius:8px; }}
+.hero {{ height:900px;position:relative;background:#090a0e; }}
+.hero img {{ width:100%;height:100%;object-fit:cover; }}
+.hero:after {{ content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent 35%,rgba(8,5,8,.9) 100%); }}
+.badge {{ position:absolute;z-index:2;left:56px;top:42px;background:#ffd33d;
+  color:#351015;padding:14px 22px;border-radius:8px;font-size:26px;font-weight:900; }}
+.body {{ padding:52px 56px 40px;background:linear-gradient(145deg,#2a0b12,#12070a); }}
+h1 {{ margin:0;color:#fff;font-size:58px;line-height:1.22;font-weight:900; }}
+.rule {{ width:150px;height:10px;background:#ffd33d;margin:28px 0; }}
+.summary {{ margin:0;font-size:30px;line-height:1.5;color:#fff4e8; }}
+.footer {{ position:absolute;left:56px;right:56px;bottom:52px;display:flex;
+  justify-content:space-between;align-items:center;border-top:2px solid #ffd33d;
+  padding-top:18px;font-size:22px;font-weight:700;color:#ffd33d; }}
+.count {{ color:#fff; }}
+</style></head><body>
+<header class="top"><div class="brand">हिंदी न्यूज़ • BREAKING</div>
+<div class="edition">{escape(str(date))}</div></header>
+<section class="hero"><img src="{image_uri}" alt="{escape(headline)}">
+<div class="badge">{escape(category)}</div></section>
+<main class="body"><h1>{escape(headline)}</h1><div class="rule"></div>
+<p class="summary">{escape(detail)}</p></main>
+<footer class="footer"><span>DAILY NEWS SHORTS</span>
+<span class="count">{index:02d} / {total:02d}</span></footer>
+</body></html>"""
+
+
+def write_review_report(data, generated):
+    lines = ["# Daily News Shorts review report", "", "This report is for human review before publication.", ""]
+    for index, (item, poster) in enumerate(zip(data["news"], generated), 1):
+        image = (BASE_DIR / item["image"]).relative_to(OUTPUT_DIR).as_posix()
+        poster_rel = poster.relative_to(OUTPUT_DIR).as_posix()
+        lines.extend([
+            f"## {index}. {item['headline']}",
+            f"![Licensed photograph preview]({image})",
+            f"![Poster preview]({poster_rel})",
+            f"- Publisher story: {item['publisher']} — {item['source_url']}",
+            f"- Photograph page: {item['image_page_url']}",
+            f"- Author: {item['image_author']}",
+            f"- License: {item['image_license']} ({item.get('image_license_url', 'license URL not supplied')})",
+            f"- Attribution: {item['image_attribution']}",
+            f"- Relevance evidence: {item['image_relevance_evidence']}",
+            "",
+        ])
+    REVIEW_FILE.write_text("\n".join(lines), encoding="utf-8")
+
 
 def main():
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    VIDEO_FILE.unlink(missing_ok=True)
+    if POSTER_DIR.exists():
+        shutil.rmtree(POSTER_DIR)
+    POSTER_DIR.mkdir(parents=True, exist_ok=True)
     data = load_data()
-    html = build_html(data)
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page(viewport={"width":1080, "height":1920}, device_scale_factor=1)
-        page.set_content(html, wait_until="networkidle", timeout=60000)
-        page.evaluate("""async () => {
-            const images = Array.from(document.querySelectorAll("img.story-image"));
-            await Promise.all(images.map(async (img) => {
-                if (img.complete && img.naturalWidth > 0) return;
-                try { await Promise.race([img.decode(), new Promise(resolve => setTimeout(resolve, 8000))]); } catch (_) {}
-            }));
-        }""")
-        image_status = page.locator("img.story-image").evaluate_all("(imgs) => imgs.map(img => ({src: img.src, loaded: img.complete && img.naturalWidth > 0}))")
-        for index, status in enumerate(image_status, 1):
-            print("Poster image {}: {}".format(index, "LOADED" if status["loaded"] else "MISSING"))
-        loaded_count = sum(1 for status in image_status if status["loaded"])
-        print(f"Poster images loaded: {loaded_count}/5.")
-        if loaded_count < 5:
-            print("WARNING: Some story photos are unavailable; those cards will use the designed NEWS fallback. Continuing video generation.")
-        page.screenshot(path=str(OUTPUT_FILE), full_page=True)
-        browser.close()
-    print("Poster generated successfully.")
-    print(f"File: {OUTPUT_FILE}")
-    print("Resolution: 1080 x 1920")
+    generated = []
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page(viewport={"width": WIDTH, "height": HEIGHT})
+        try:
+            total = len(data["news"])
+            for index, item in enumerate(data["news"], start=1):
+                path = POSTER_DIR / f"news_{index:02d}.png"
+                page.set_content(build_html(item, index, total, data["date"]),
+                                 wait_until="networkidle")
+                page.screenshot(path=str(path), full_page=True)
+                with Image.open(path) as image:
+                    if image.size != (WIDTH, HEIGHT):
+                        raise RuntimeError(f"Poster has incorrect size: {path}")
+                generated.append(path)
+        finally:
+            browser.close()
+
+    if len(generated) != len(data["news"]):
+        raise RuntimeError("Not all individual news posters were generated.")
+    write_review_report(data, generated)
+    print(f"SUCCESS: Generated {len(generated)} individual posters.")
+    print(f"Review report: {REVIEW_FILE}")
+    for path in generated:
+        print(path)
+
 
 if __name__ == "__main__":
     main()
