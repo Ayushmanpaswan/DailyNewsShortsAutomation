@@ -113,7 +113,7 @@ class StoryMappingTests(unittest.TestCase):
         self.assertIn("inauguration", mapping["context_terms"])
 
     def test_added_aliases_do_not_make_generic_festival_or_place_a_story_entity(self):
-        item = {"headline": "दिल्ली में भारी बारिश", "detail": "कई इलाकों में जलभराव हुआ।"}
+        item = {"headline": "दिल्ली की बड़ी खबर", "detail": "शहर में नया अपडेट जारी हुआ।"}
         mapping = story_mapping(item)
         self.assertEqual(mapping["status"], "rejected")
 
