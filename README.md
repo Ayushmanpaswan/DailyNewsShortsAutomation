@@ -53,18 +53,13 @@ Publisher RSS is used for story discovery. Do not copy publisher article photogr
 
 ## YouTube upload (manual and optional)
 
-The upload helper is separate from the build pipeline. It requires local OAuth files:
-
-- `client_secret.json`
-- `token.json`
-
-Keep both files private and never commit them. To authorize locally, place your Google Desktop OAuth client JSON at the project root and run:
+The uploader uses a Google OAuth `token.json` containing a valid refresh token. Keep it private and never commit it. To authorize locally, place your Google Desktop OAuth client JSON at the project root and run:
 
 ```powershell
 python reauthorize_youtube.py
 ```
 
-After reviewing the video, report, image licenses, and generated credits, an upload can be initiated manually:
+After reviewing the video, report, image licenses, and generated credits, a local upload can be initiated manually:
 
 ```powershell
 python youtube_upload.py --privacy private
@@ -74,9 +69,9 @@ Choose a different privacy setting only after explicitly reviewing it. The uploa
 
 ## GitHub Actions
 
-`.github/workflows/build-video.yml` is currently **manual-dispatch only**. It has no schedule or push trigger, does not load YouTube credentials, does not upload to YouTube, and uploads generated files only as a short-lived review artifact.
+`.github/workflows/build-video.yml` is **manual-dispatch only**. It has no schedule or push trigger. When manually run, it fetches news, applies the configured image relevance/license/quality checks, generates one combined vertical video, and uploads that single video to YouTube as **Public**. If no valid stories/images are found, the pipeline stops before upload. The workflow requires a GitHub Actions secret named `YOUTUBE_TOKEN_JSON` containing the complete OAuth `token.json` JSON with a refresh token. Add it under **Settings → Secrets and variables → Actions**; never paste the token into chat or commit it.
 
-To run it manually, open the repository's **Actions** tab, select **Build Daily News Shorts (manual review)**, and choose **Run workflow**. This starts RSS/Commons discovery and generates review artifacts; it does not publish a video.
+To publish, open the repository's **Actions** tab, select **Build and publish Daily News Shorts**, and choose **Run workflow**. Each manual run may publish a new public video. Review the run logs and saved artifact afterward. The metadata relevance checks are not visual confirmation, so public publishing without human visual review can still publish a mismatched scene if metadata matching is misleading.
 
 ## Tests
 
