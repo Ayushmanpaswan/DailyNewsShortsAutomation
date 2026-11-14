@@ -35,6 +35,7 @@ REVIEW_FILE = OUTPUT_DIR / "review_report.md"
 REJECTION_LOG_FILE = DATA_DIR / "image_rejection_log.json"
 LEGACY_POSTER_FILE = OUTPUT_DIR / "daily_news_poster.png"
 MAX_NEWS = 5
+MAX_IMAGE_CHECKS = 100
 MAX_ATTEMPTS = 2
 RSS_CONNECT_TIMEOUT = 5
 RSS_READ_TIMEOUT = 10
@@ -348,7 +349,7 @@ def _run():
     collected.sort(key=lambda item: item["_timestamp"], reverse=True)
     prefetch_queries([
         query
-        for item in collected[:40]
+        for item in collected[:MAX_IMAGE_CHECKS]
         for query in search_queries(item)
     ])
     selected = []
@@ -363,8 +364,8 @@ def _run():
             continue
         attempted.add(key)
         image_attempts += 1
-        if image_attempts > 40:
-            print("Stopping after 40 strict image checks; uncertain stories remain excluded.")
+        if image_attempts > MAX_IMAGE_CHECKS:
+            print(f"Stopping after {MAX_IMAGE_CHECKS} strict image checks; uncertain stories remain excluded.")
             break
         image_path = IMAGE_DIR / f"news_{len(selected) + 1:02d}.jpg"
         story_rejection = {
