@@ -7,6 +7,7 @@ __pycache__/
 client_secret.json
 token.json
 assets/*.mp3
+!assets/background_music.mp3
 assets/*.wav
 output/*
 !output/.gitkeep
