@@ -2,6 +2,26 @@ name: Build and publish Daily News Shorts
 
 on:
   workflow_dispatch:
+  schedule:
+    # GitHub Actions cron uses UTC; these are the approved India-time slots.
+    - cron: "30 3 * * 1"   # Monday 9:00 AM IST
+    - cron: "30 13 * * 1"  # Monday 7:00 PM IST
+    - cron: "30 6 * * 2"   # Tuesday 12:00 PM IST
+    - cron: "30 12 * * 2"  # Tuesday 6:00 PM IST
+    - cron: "30 7 * * 3"   # Wednesday 1:00 PM IST
+    - cron: "0 14 * * 3"   # Wednesday 7:30 PM IST
+    - cron: "30 8 * * 4"   # Thursday 2:00 PM IST
+    - cron: "30 14 * * 4"  # Thursday 8:00 PM IST
+    - cron: "0 12 * * 5"   # Friday 5:30 PM IST
+    - cron: "30 13 * * 5"  # Friday 7:00 PM IST
+    - cron: "30 7 * * 6"   # Saturday 1:00 PM IST
+    - cron: "30 13 * * 6"  # Saturday 7:00 PM IST
+    - cron: "30 4 * * 0"   # Sunday 10:00 AM IST
+    - cron: "30 12 * * 0"  # Sunday 6:00 PM IST
+
+concurrency:
+  group: daily-news-short-publishing
+  cancel-in-progress: false
 
 permissions:
   contents: read
