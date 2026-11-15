@@ -7,14 +7,13 @@ BASE_DIR = Path(__file__).resolve().parent
 POSTER_DIR = BASE_DIR / "output" / "posters"
 OUTPUT = BASE_DIR / "output" / "daily_news_short.mp4"
 DEFAULT_MUSIC = BASE_DIR / "assets" / "background_music.mp3"
-TOTAL_VIDEO_SECONDS = 5
+SECONDS_PER_NEWS = 3
 TRANSITION_SECONDS = 0.5
 
 
 def main():
     parser = argparse.ArgumentParser(description="Create one vertical news slideshow.")
     parser.add_argument("--music", default=str(DEFAULT_MUSIC))
-    parser.add_argument("--total-seconds", type=float, default=TOTAL_VIDEO_SECONDS, help="Total output video duration in seconds.")
     parser.add_argument("--volume", type=float, default=0.20)
     args = parser.parse_args()
 
@@ -27,14 +26,12 @@ def main():
         raise SystemExit("ERROR: FFmpeg not found. Install FFmpeg first.")
     if not posters:
         raise SystemExit(f"ERROR: No individual posters found in {POSTER_DIR}")
-    if args.total_seconds <= 0:
-        raise SystemExit("ERROR: --total-seconds must be greater than zero.")
     if not 0.0 <= args.volume <= 1.0:
         raise SystemExit("ERROR: Volume must be between 0.0 and 1.0.")
     if not music.is_file():
         raise SystemExit(f"ERROR: Background music not found: {music}")
 
-    total_duration = args.total_seconds
+    total_duration = len(posters) * SECONDS_PER_NEWS
     slide_duration = (total_duration + (len(posters) - 1) * TRANSITION_SECONDS) / len(posters)
     if slide_duration <= TRANSITION_SECONDS and len(posters) > 1:
         raise SystemExit("ERROR: Total duration is too short for the number of posters and transition length.")
