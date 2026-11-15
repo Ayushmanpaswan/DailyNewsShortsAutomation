@@ -7,14 +7,14 @@ BASE_DIR = Path(__file__).resolve().parent
 POSTER_DIR = BASE_DIR / "output" / "posters"
 OUTPUT = BASE_DIR / "output" / "daily_news_short.mp4"
 DEFAULT_MUSIC = BASE_DIR / "assets" / "background_music.mp3"
-SLIDE_SECONDS = 5
+TOTAL_VIDEO_SECONDS = 5
 TRANSITION_SECONDS = 0.5
 
 
 def main():
     parser = argparse.ArgumentParser(description="Create one vertical news slideshow.")
     parser.add_argument("--music", default=str(DEFAULT_MUSIC))
-    parser.add_argument("--slide-seconds", type=int, default=SLIDE_SECONDS)
+    parser.add_argument("--total-seconds", type=float, default=TOTAL_VIDEO_SECONDS, help="Total output video duration in seconds.")
     parser.add_argument("--volume", type=float, default=0.20)
     args = parser.parse_args()
 
@@ -27,14 +27,17 @@ def main():
         raise SystemExit("ERROR: FFmpeg not found. Install FFmpeg first.")
     if not posters:
         raise SystemExit(f"ERROR: No individual posters found in {POSTER_DIR}")
-    if args.slide_seconds <= 0:
-        raise SystemExit("ERROR: --slide-seconds must be greater than zero.")
+    if args.total_seconds <= 0:
+        raise SystemExit("ERROR: --total-seconds must be greater than zero.")
     if not 0.0 <= args.volume <= 1.0:
         raise SystemExit("ERROR: Volume must be between 0.0 and 1.0.")
     if not music.is_file():
         raise SystemExit(f"ERROR: Background music not found: {music}")
 
-    total_duration = len(posters) * args.slide_seconds
+    total_duration = args.total_seconds
+    slide_duration = (total_duration + (len(posters) - 1) * TRANSITION_SECONDS) / len(posters)
+    if slide_duration <= TRANSITION_SECONDS and len(posters) > 1:
+        raise SystemExit("ERROR: Total duration is too short for the number of posters and transition length.")
     inputs = []
     for poster in posters:
         inputs.extend(["-loop", "1", "-framerate", "30", "-i", str(poster)])
@@ -45,7 +48,7 @@ def main():
         filters.append(
             f"[{index}:v]scale=1080:1920:force_original_aspect_ratio=increase,"
             f"crop=1080:1920,setsar=1,format=yuv420p,"
-            f"trim=duration={args.slide_seconds},setpts=PTS-STARTPTS[v{index}]"
+            f"trim=duration={slide_duration},setpts=PTS-STARTPTS[v{index}]"
         )
 
     if len(posters) == 1:
@@ -54,7 +57,7 @@ def main():
         current = "[v0]"
         for index in range(1, len(posters)):
             output = f"xf{index}"
-            offset = index * args.slide_seconds - TRANSITION_SECONDS
+            offset = index * (slide_duration - TRANSITION_SECONDS)
             filters.append(
                 f"{current}[v{index}]xfade=transition=fade:duration="
                 f"{TRANSITION_SECONDS}:offset={offset}[{output}]"
@@ -85,7 +88,7 @@ def main():
     if not OUTPUT.is_file():
         raise SystemExit("ERROR: FFmpeg completed without creating the video.")
     print(f"SUCCESS: Created one {len(posters)}-slide video: {OUTPUT}")
-    print(f"Resolution: 1080x1920; duration: {total_duration} seconds")
+    print(f"Resolution: 1080x1920; duration: {total_duration:g} seconds")
 
 
 if __name__ == "__main__":
