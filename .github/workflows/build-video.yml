@@ -17,6 +17,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Restore previously published news history
+        uses: actions/cache/restore@v4
+        with:
+          path: data/news_history.json
+          key: daily-news-history-${{ github.run_id }}
+          restore-keys: |
+            daily-news-history-
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -79,7 +87,16 @@ jobs:
           print("YouTube OAuth preflight passed; refreshed token saved for this run.")
 
       - name: Fetch latest news and validate images
+        id: fetch_news
         run: python fetch_news.py
+
+      - name: Save updated news history
+        if: always() && steps.fetch_news.outcome == 'success'
+        uses: actions/cache/save@v4
+        with:
+          path: data/news_history.json
+          key: daily-news-history-${{ github.run_id }}
+
 
       - name: Generate individual news posters
         run: python poster_generator.py
