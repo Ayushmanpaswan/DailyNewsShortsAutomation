@@ -65,7 +65,7 @@ After reviewing the video, report, image licenses, and generated credits, a loca
 python youtube_upload.py --privacy private
 ```
 
-Choose a different privacy setting only after explicitly reviewing it. The uploader validates that generated metadata contains image credits, but it does not replace human review. No upload is performed by the current GitHub Actions workflow.
+Choose a different privacy setting only after explicitly reviewing it. The uploader validates that generated metadata contains image credits, but it does not replace human review.
 
 ## GitHub Actions
 
