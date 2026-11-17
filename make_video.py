@@ -7,12 +7,12 @@ BASE_DIR = Path(__file__).resolve().parent
 POSTER_DIR = BASE_DIR / "output" / "posters"
 OUTPUT = BASE_DIR / "output" / "daily_news_short.mp4"
 DEFAULT_MUSIC = BASE_DIR / "assets" / "background_music.mp3"
-SECONDS_PER_NEWS = 3
+SECONDS_PER_NEWS = 4
 TRANSITION_SECONDS = 0.5
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Create one vertical news slideshow.")
+    parser = argparse.ArgumentParser(description="Create one four-second vertical news poster video.")
     parser.add_argument("--music", default=str(DEFAULT_MUSIC))
     parser.add_argument("--volume", type=float, default=0.20)
     args = parser.parse_args()
@@ -84,7 +84,7 @@ def main():
 
     if not OUTPUT.is_file():
         raise SystemExit("ERROR: FFmpeg completed without creating the video.")
-    print(f"SUCCESS: Created one {len(posters)}-slide video: {OUTPUT}")
+    print(f"SUCCESS: Created one {len(posters)}-poster video: {OUTPUT}")
     print(f"Resolution: 1080x1920; duration: {total_duration:g} seconds")
 
 
