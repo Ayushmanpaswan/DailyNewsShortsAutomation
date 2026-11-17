@@ -34,7 +34,7 @@ VIDEO_FILE = OUTPUT_DIR / "daily_news_short.mp4"
 REVIEW_FILE = OUTPUT_DIR / "review_report.md"
 REJECTION_LOG_FILE = DATA_DIR / "image_rejection_log.json"
 LEGACY_POSTER_FILE = OUTPUT_DIR / "daily_news_poster.png"
-MAX_NEWS = 5
+MAX_NEWS = 1
 MAX_IMAGE_CHECKS = 100
 MAX_ATTEMPTS = 2
 RSS_CONNECT_TIMEOUT = 5
@@ -296,8 +296,8 @@ def clear_previous_outputs():
 def build_youtube_metadata(news):
     headlines = [item["headline"] for item in news]
     categories = list(dict.fromkeys(item.get("category", "भारत") for item in news))
-    title = f"आज की बड़ी खबरें | {' • '.join(headlines[:2])} #Shorts"[:100]
-    lines = ["आज के Hindi News Shorts में शामिल खबरें:", ""]
+    title = f"आज की बड़ी खबर | {headlines[0]} #Shorts"[:100]
+    lines = ["आज के Hindi News Short की खबर:", ""]
     for index, item in enumerate(news, 1):
         summary = re.sub(r"\s+", " ", item["detail"]).strip()[:240]
         lines += [f"{index}. {item['headline']}", f"   {summary}", f"   स्रोत: {item['publisher']} — {item['source_url']}", ""]
