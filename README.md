@@ -1,13 +1,13 @@
 # Daily News Shorts Automation
 
-Generate a single vertical Hindi news video from individual 1080×1920 news posters. Each story is selected only when the image-discovery pipeline finds a candidate that passes the configured metadata relevance, license, duplicate, and image-quality checks. The metadata checks are not visual confirmation; review the generated posters and attribution report before publishing.
+Generate one 1080×1920 Hindi news poster from the newest eligible, unseen RSS story. The system skips stories without a candidate that passes the configured metadata relevance, license, duplicate, and image-quality checks. It creates a single 4-second vertical MP4 with the configured background music. Metadata checks are not visual confirmation; review the poster and attribution report before publishing.
 
 ## Current workflow
 
-1. `fetch_news.py` reads the configured RSS feeds, filters recent/nonduplicate stories, discovers Wikimedia Commons candidates, validates license metadata and image quality, and writes a review report plus YouTube metadata.
-2. `poster_generator.py` creates one full-screen poster per accepted story.
-3. `make_video.py` combines the posters into one vertical MP4.
-4. Review `output/review_report.md`, every poster in `output/posters/`, the generated video, and all photo credits before any publication.
+1. `fetch_news.py` reads the configured RSS feeds, sorts stories newest-first, skips previously published stories, and selects only the first story with a verified relevant, licensed, nonduplicate, sufficiently large Wikimedia Commons image.
+2. `poster_generator.py` creates exactly one full-screen poster.
+3. `make_video.py` creates a 4-second vertical MP4 from that single poster.
+4. Review `output/review_report.md`, the single poster in `output/posters/`, the 4-second video, and the photo credit before publication.
 
 If no stories have a suitable image, the pipeline stops safely instead of reusing unrelated or stale output.
 
@@ -38,7 +38,7 @@ python make_video.py
 
 Expected review outputs include:
 
-- `output/posters/*.png` — individual vertical news posters
+- `output/posters/news_01.png` — the single vertical news poster
 - `output/daily_news_short.mp4` — combined video
 - `output/review_report.md` — story/image decisions and attribution details
 - `data/youtube_metadata.json` — generated title, description, tags, and image credits
@@ -69,9 +69,9 @@ Choose a different privacy setting only after explicitly reviewing it. The uploa
 
 ## GitHub Actions
 
-`.github/workflows/build-video.yml` is **manual-dispatch only**. It has no schedule or push trigger. When manually run, it fetches news, applies the configured image relevance/license/quality checks, generates one combined vertical video, and uploads that single video to YouTube as **Public**. If no valid stories/images are found, the pipeline stops before upload. The workflow requires a GitHub Actions secret named `YOUTUBE_TOKEN_JSON` containing the complete OAuth `token.json` JSON with a refresh token. Add it under **Settings → Secrets and variables → Actions**; never paste the token into chat or commit it.
+`.github/workflows/build-video.yml` can be run manually and also has the configured weekly schedule. Each run fetches the newest eligible unseen story, applies the configured image relevance/license/quality checks, creates one poster and a 4-second vertical video, and uploads that single video to YouTube as **Public**. If no valid stories/images are found, the pipeline stops before upload. The workflow requires a GitHub Actions secret named `YOUTUBE_TOKEN_JSON` containing the complete OAuth `token.json` JSON with a refresh token. Add it under **Settings → Secrets and variables → Actions**; never paste the token into chat or commit it.
 
-To publish, open the repository's **Actions** tab, select **Build and publish Daily News Shorts**, and choose **Run workflow**. Each manual run may publish a new public video. Review the run logs and saved artifact afterward. The metadata relevance checks are not visual confirmation, so public publishing without human visual review can still publish a mismatched scene if metadata matching is misleading.
+To publish, open the repository's **Actions** tab, select **Build and publish Daily News Shorts**, and choose **Run workflow**. Each run may publish one new public video, containing one news poster displayed for 4 seconds. Review the run logs and saved artifact afterward. The metadata relevance checks are not visual confirmation, so public publishing without human visual review can still publish a mismatched scene if metadata matching is misleading.
 
 ## Tests
 
