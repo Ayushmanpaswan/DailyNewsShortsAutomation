@@ -127,6 +127,12 @@ jobs:
       - name: Upload one combined video publicly
         run: python youtube_upload.py --privacy public
 
+      - name: Publish video to Facebook Page
+        env:
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
+        run: python facebook_upload.py
+
       - name: Upload build report and video artifact
         if: always()
         uses: actions/upload-artifact@v4
